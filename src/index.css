@@ -1,0 +1,186 @@
+body,
+html {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+main {
+  width: 100%;
+  height: 100%;
+}
+
+#loadgamebtn {
+  display: none;
+  width: 100%;
+  height: 100%;
+}
+
+#moth {
+  position: absolute;
+  background: no-repeat url(assets/mothsheet.png) 0 -1080px;
+  width: 64px;
+  height: 64px;
+}
+
+.idle-moth {
+  animation-name: idleMoth;
+  animation-duration: 800ms;
+  animation-timing-function: steps(3);
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+
+@keyframes idleMoth {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: -192px 0;
+  }
+}
+
+/* farts */
+.fart {
+  position: absolute;
+  background: no-repeat url(assets/fart.png) 0 -32px;
+  height: 32px;
+}
+
+.fart-initial {
+  width: 32px;
+  background-position-y: 0;
+  animation-name: initialFart, fartDispersal;
+  animation-duration: 1000ms, 2000ms;
+  animation-timing-function: steps(3), ease;
+  animation-iteration-count: 1, 1;
+  animation-fill-mode: forwards, forwards;
+}
+
+.fart-stream {
+  width: 1px;
+  background-position-y: 0;
+  animation-name: fartTrail, fartDispersal;
+  animation-duration: 1000ms, 2000ms;
+  animation-timing-function: steps(64), ease;
+  animation-iteration-count: 1, 1;
+  animation-fill-mode: forwards, forwards;
+}
+
+@keyframes initialFart {
+  from {
+    background-position-x: 0;
+  }
+  to {
+    background-position-x: -96px;
+  }
+}
+
+@keyframes fartTrail {
+  from {
+    background-position-x: -160px;
+  }
+  to {
+    background-position-x: -96px;
+  }
+}
+
+@keyframes fartDispersal {
+  from {
+    opacity: 0.95;
+  }
+  to {
+    opacity: 0;
+  }
+}
+/* #grasses {} */
+
+.grass {
+  position: absolute;
+  background: no-repeat url(assets/grass.png) 0 -1080px;
+  width: 32px;
+  height: 32px;
+}
+
+.grass-1 {
+  background-position: 0 0;
+}
+
+.grass-2 {
+  background-position: -32px 0;
+}
+
+.grass-3 {
+  background-position: -64px 0;
+}
+
+.grass-4 {
+  background-position: -96px 0;
+}
+
+.grass-5 {
+  background-position: -128px 0;
+}
+
+.grass-6 {
+  background-position: -160px 0;
+}
+
+.grass-animated {
+  animation-name: grassAnimation;
+  animation-duration: 500ms;
+  animation-timing-function: steps(3);
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+
+@keyframes grassAnimation {
+  from {
+    background-position-y: 0;
+  }
+  to {
+    background-position-y: -96px;
+  }
+}
+
+/* #flowers {} */
+
+.flower {
+  position: absolute;
+  background: no-repeat url(assets/flower.png) 0 -1080px;
+  width: 176px;
+  height: 281px;
+}
+
+#sea {
+  background: blue;
+  height: 32px;
+  width: 1000px;
+}
+
+#sky {
+  background: skyblue;
+}
+
+.notification {
+  position: absolute;
+  bottom: 1em;
+  left: 1em;
+  border-radius: 7px;
+  padding: 1em;
+  background: rgba(40, 0, 40, 0.6);
+  color: rgba(200, 255, 200, 1);
+  max-width: 25ch;
+  box-shadow: rgba(0, 0, 0, 0.5) 5px 5px 15px;
+  letter-spacing: 0.015em;
+}
+
+meter {
+  position: absolute;
+  top: 3%;
+  left: 6%;
+  width: 88%;
+  height: 1em;
+}
