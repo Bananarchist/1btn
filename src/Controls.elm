@@ -24,7 +24,7 @@ updateControls msg model =
             Msg.PadButtonsDown -> padPressed model
             Msg.PadButtonsReleased -> padDepressed model
             Msg.PadConnected _ -> listenForPad model
-            Msg.PadDisconnected connectedPads -> stopListeningToPad connectedPads model
+            Msg.PadDisconnected connectedPads -> stopListeningToPad connectedPads model 
             Msg.KeyboardDown -> keyboardPressed model
             Msg.KeyboardReleased -> keyboardDepressed model
             Msg.MouseDown -> mousePressed model
@@ -38,12 +38,15 @@ updateControls msg model =
 
 padPressed = Model.setPad True
 padDepressed = Model.setPad False
-listenForPad = Model.setListeningPad True
+listenForPad = Model.setListeningPad True >> Model.addNotification "Game pad connected"
 stopListeningToPad connectedPads = 
     if connectedPads > 0 then 
         Model.setListeningPad True
+        >> Model.addNotification "Game pad connected"
     else
         Model.setListeningPad False
+        >> Model.addNotification "Game pad disconnected"
+
 
 keyboardPressed = Model.setKeyboard True
 keyboardDepressed = Model.setKeyboard False

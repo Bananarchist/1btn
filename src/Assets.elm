@@ -1,4 +1,4 @@
-module Assets exposing (moth, lizard, bird, lover, grass, fart, sky, firefly, tree, sea, plant, flower)
+module Assets exposing (moth, lizard, bird, lover, grass, fart, sky, firefly, tree, sea, plant, flower, body, frontWing, backWing)
 
 import Helpers exposing (appendIf)
 import Msg exposing (Msg)
@@ -11,6 +11,33 @@ moth : Model -> List (Attribute Msg)
 moth = 
     always 
         [ Hats.id "moth" 
+        , Hats.class "idle-moth"
+        --, Hats.style "background-position" "0px 0px"
+        ]
+
+body : Model -> List (Attribute Msg)
+body =
+    always 
+        [ Hats.id "body" 
+        , Hats.class "moth"
+        , Hats.class "idle-moth"
+        --, Hats.style "background-position" "0px 0px"
+        ]
+
+frontWing : Model -> List (Attribute Msg)
+frontWing =
+    always 
+        [ Hats.id "front-wing" 
+        , Hats.class "moth"
+        , Hats.class "idle-moth"
+        --, Hats.style "background-position" "0px 0px"
+        ]
+
+backWing : Model -> List (Attribute Msg)
+backWing =
+    always 
+        [ Hats.id "back-wing" 
+        , Hats.class "moth"
         , Hats.class "idle-moth"
         --, Hats.style "background-position" "0px 0px"
         ]

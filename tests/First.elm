@@ -10,7 +10,7 @@ suite : Test
 suite = 
   [ test "Initial game is not in game over" <|
     \_ ->
-      Model.init 600 400
+      Model.init 600 400 0
       |> Model.gameOverか
       |> Expect.equal False
 

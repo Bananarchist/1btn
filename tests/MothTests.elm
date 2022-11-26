@@ -34,7 +34,7 @@ suite : Test
 suite =
     moth
 
-init = Model.init 600 400
+init = Model.init 600 400 0
 
 step δ =
     \which -> updateMothStatus (Quantity.multiplyBy which δ)
@@ -128,7 +128,7 @@ moth =
             --|> Maybe.map (Debug.log "Moth and Frame coords" >> uncurry Quantity.greaterThan >> Expect.equal True)
             |> Maybe.map (uncurry Quantity.greaterThan >> Expect.equal True)
             |> Maybe.withDefault (Expect.fail "Moth is below grass")
-    , Test.only <| fuzz (Fuzz.floatRange 50 150 |> fuzzStepper) "3KP produces 3 Farts" <|
+    , Test.only <| fuzz (Fuzz.floatRange 200 450 |> fuzzStepper) "3KP produces 3 Farts" <|
         \stepStatus ->
             let 
                 model = 
@@ -141,12 +141,12 @@ moth =
                     |> Model.setKeyboard True
                     |> stepStatus 4
                     |> Model.setKeyboard False
-                    |> stepStatus 6
+                    |> stepStatus 5
                     |> Model.setKeyboard True
                     |> stepStatus 6
                 thenModel =
                     Model.setKeyboard False model
-                    |> stepStatus 50 
+                    |> stepStatus 500000
                 fartTests = 
                     (Model.farts model, Model.farts thenModel)
                 failString = Debug.toString model
@@ -154,10 +154,9 @@ moth =
             fartTests
             |> Tuple.mapBoth List.length List.length
             |> Expect.all 
-                [ uncurry Expect.notEqual
-                , Tuple.first >> Expect.equal 3
+                [ uncurry Expect.notEqual >> Expect.onFail (fartTests |> Debug.toString)
+                , Tuple.first >> Expect.equal 3 >> Expect.onFail failString
                 ]
-            |> Expect.onFail failString
     , fuzz ((Fuzz.floatRange 1000.0 10000.0) |> fuzzStepper) "If keys are pressed, gas depletes" <|
         \stepStatus ->
             init

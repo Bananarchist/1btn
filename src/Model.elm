@@ -1,6 +1,6 @@
 module Model exposing
     ( Model, Flower(..), Grass(..)
-    , init, setGrassAnimations, grassAnimationsCompleteか, anyPendingMothMovementsか, setMothMovements, currentTickか
+    , init, setGrassAnimations, grassAnimationsCompleteか, anyPendingMothMovementsか, setMothMovements, currentTickか, addNotification
     , anyNotifications, notification, seaCoords
     , gas, mothRot, mothScale, mothPos, farts, gameOverか, mothMovingか, mothLandingか, mothFartingか, mothFeedingか, mothTakingOffか
     , birdScale, birdPos, lizardPos, lizardScale, loverPos, loverScale
@@ -108,7 +108,7 @@ import Vector2d exposing (Vector2d)
 {-| Constants
 -}
 gasMeters : Float
-gasMeters = 0.2
+gasMeters = 0.5
 
 gasSpeed : Length.Length
 gasSpeed =
@@ -125,7 +125,7 @@ fartVelocity =
     Speed.metersPerSecond gasMeters
 
 groundLevel : Float
-groundLevel = 200
+groundLevel = -700
 
 halfPi : Float
 halfPi = pi / 2
@@ -166,6 +166,7 @@ type alias Model =
     , width : Int
     , height : Int
     , random : RandomValues
+    , notifications : List (Duration, String)
     }
 
 
@@ -181,6 +182,8 @@ type alias Controls =
 type World
     = World
 
+type Screen
+    = Screen
 
 type Local
     = Local
@@ -189,12 +192,15 @@ type Local
 type alias Position =
     Point2d Meters World
 
+type alias ScreenPosition =
+    Point2d Meters Screen
+
 type alias Vector =
     Vector2d Meters World
 
 
 type alias Frame =
-    Frame2d Meters World { defines : Local }
+    Frame2d Meters World { defines : Screen }
 
 
 type alias Coordinates =
@@ -269,6 +275,7 @@ init width height currentTick_ =
     , width = width
     , height = height
     , random = initRandomValues
+    , notifications = []
     }
 
 
@@ -280,13 +287,16 @@ initControls =
 initPositions : Int -> Int -> Positions
 initPositions width height =
     let
+        screenWMid = toFloat width / 2
+        screenHMid = toFloat height / 2
+
         initialFrame =
-            Frame2d.atPoint (Point2d.centimeters (toFloat width / 2 - 36) (toFloat height / 2 - 36))
+            --Frame2d.atPoint (Point2d.centimeters (screenWMid - 32) (screenHMid - 32)) |> Frame2d.reverseY
+            Frame2d.atPoint (Point2d.centimeters 0 0) |> Frame2d.reverseY
 
         initialMothPos =
-            Point2d.xyIn initialFrame (Length.centimeters 0) (Length.centimeters 0)
-
-        -- Point2d.centimeters 200 300 --Point2d.pixels 0 0
+            --Point2d.xyIn initialFrame (Length.centimeters 0) (Length.centimeters 0)
+            Point2d.centimeters (screenWMid - 32) (screenHMid - 32 |> negate)
         initialLoverPos =
             Point2d.xyIn initialFrame (Length.centimeters 1000) (Length.centimeters 1000)
 
@@ -321,12 +331,12 @@ initRandomValues =
 -}
 anyNotifications : Model -> Bool
 anyNotifications =
-    always True
+    .notifications >> List.isEmpty >> not
 
 
 notification : Model -> Maybe String
 notification =
-    always (Just "Game Pad Connected")
+    .notifications >> List.head >> Maybe.map Tuple.second
 
 
 lastTick : Model -> Duration
@@ -349,50 +359,6 @@ currentTickか : Model -> Bool
 currentTickか =
     currentTick >> Quantity.greaterThanZero
 
-{-| Moth
--}
-
-
-
-{-
-      mothState : Model -> MothState
-      mothState model =
-          case model.mothState of
-              Actively doing _ ->
-                  doing
-
-              Transitioning from _ _ ->
-                  from
-
-
-   canLandOnFlowerか : Model -> Maybe ( Float, Float )
-   canLandOnFlowerか model =
-       let
-           ( mothX, mothY ) =
-               mothPos model
-
-           withinX =
-               Tuple.first >> within (mothX - 5) (mothX + 5)
-
-           withinY =
-               Tuple.second >> within (mothY - 5) (mothY + 5)
-
-           withinRange =
-               allPredicates [ withinX, withinY ]
-       in
-       if gas model < 100 then
-           model
-               |> .positions
-               |> .flowers
-               |> List.map (Tuple.mapFirst flowerYPos)
-               |> List.filter withinRange
-               |> List.head
-
-       else
-       Nothing
-
-
--}
 
 
 mothMovingか : Model -> Bool
@@ -403,6 +369,14 @@ mothMovingか model =
 mothFartingか : Model -> Bool
 mothFartingか model =
     gas model > 0 && anyPressedか model
+
+fartActiveか : Model -> Bool
+fartActiveか model =
+    case model.positions.farts of
+        f :: fs ->
+            f.active
+        _ ->
+            False
 
 
 mothLandingか : Model -> Bool
@@ -465,9 +439,10 @@ mothPos =
 
 
 mothCoords : Model -> Coordinates
-mothCoords =
-    mothPos
-        >> Point2d.coordinates
+mothCoords model =
+    mothPos model
+    --|> Point2d.coordinates
+    |> Point2d.coordinatesIn model.positions.frame
 
 
 
@@ -494,7 +469,7 @@ mothMirroredか : Model -> Bool
 mothMirroredか =
     .direction 
         >> Vector2d.xComponent
-        >> Quantity.greaterThanZero
+        >> Quantity.lessThanZero
 
 
 mothMovements : Model -> Q.Queue Movement
@@ -503,19 +478,23 @@ mothMovements =
 
 
 farts : Model -> List (List { coords : Coordinates, scale : Float, rotation : Angle })
-farts =
-    .positions
-    >> .farts
-    >> List.map
+farts model =
+    model.positions
+    |> .farts
+    |> List.map
         (\{initial, θ, length} ->
             let
-                (dir, len) = ((Direction2d.fromAngle θ), (Length.centimeters 1))
+                --(dir, len) = ((Direction2d.fromAngle θ |> Direction2d.relativeTo model.positions.frame), (Length.centimeters 1))
+                (dir, len) = ((Direction2d.fromAngle θ), (Length.centimeters 1)) |> Debug.log "fart direction"
             in
-            { coords = initial |> Point2d.coordinates, scale = 1, rotation = θ }
+            { coords = initial |> Point2d.coordinatesIn model.positions.frame, scale = 1, rotation = θ }
             :: (List.range 1 length |> List.map (\i -> 
                 { coords = 
-                    Point2d.translateIn dir (Quantity.multiplyBy (toFloat i) len) initial 
-                    |> Point2d.coordinates
+                    initial
+                    --|> Point2d.relativeTo model.positions.frame
+                    |> Point2d.translateIn dir (Quantity.multiplyBy (toFloat i) len) 
+                    --|> Point2d.coordinates
+                    |> Point2d.coordinatesIn model.positions.frame
                 , scale = 1
                 , rotation = θ
                 }
@@ -617,8 +596,8 @@ visibleGrassSegments model =
         |> Tuple.mapBoth (.positions >> .grass) (.random >> .grass >> Tuple.second)
         |> uncurry (List.map3 (\idx ( f, k ) animate -> 
             { kind = k
-            , coords = (Length.centimeters (toFloat idx + 1 |> (*) 32), Length.centimeters groundLevel)
---            , coords = Point2d.relativeTo model.positions.frame p |> Point2d.coordinates
+            --, coords = (Length.centimeters (toFloat idx |> (*) 32), Length.centimeters groundLevel)
+            , coords = Point2d.xyIn model.positions.frame (toFloat idx |> (*) 32 |> Length.centimeters) (Length.centimeters groundLevel) |> Point2d.coordinates
             , scale = 1 
             , animated = animate
             , mirrored = f
@@ -638,7 +617,7 @@ trees =
 
 flowers : Model -> List { kind : Flower, coords : Coordinates, scale : Float }
 flowers model =
-    [ { kind = Flower, coords = coordinatesIn model (Point2d.centimeters 0 0), scale = 1 } ]
+    [] --[ { kind = Flower, coords = coordinatesIn model (Point2d.centimeters 0 0), scale = 1 } ]
 
 
 flowerYPos : Flower -> Float
@@ -651,7 +630,8 @@ seaPos =
 
 seaCoords : Model -> Coordinates
 seaCoords model =
-    Point2d.xyIn model.positions.frame (Length.centimeters -1000) (Length.centimeters (groundLevel + 32)) |> Point2d.relativeTo model.positions.frame |> Point2d.coordinates
+    Point2d.xyIn model.positions.frame (Length.centimeters -1000) (Length.centimeters (groundLevel - 20)) 
+    |> Point2d.coordinates
 
 grassAnimationsCompleteか : Model -> Bool
 grassAnimationsCompleteか = 
@@ -722,6 +702,20 @@ setCurrentTick : Duration -> Model -> Model
 setCurrentTick t =
     mapModel (\m -> { m | currentTick = t })
 
+addNotification : String -> Model -> Model
+addNotification msg =
+    mapModel (\m -> { m | notifications = (Duration.seconds 4, msg) :: m.notifications })
+
+updateNotifications : Model -> Model
+updateNotifications model =
+    case model.notifications of
+        (nd, nmsg) :: ns ->
+            if Quantity.greaterThanZero nd then
+                mapModel (\m -> { m | notifications = (Quantity.minus (tickδ model) nd, nmsg) :: ns}) model
+            else
+                mapModel (\m -> {m | notifications = ns}) model
+        _ ->
+            model
 
 {-| MOTH
 -}
@@ -734,19 +728,29 @@ mapFramePosition : (Frame -> Frame) -> Model -> Model
 mapFramePosition fn =
     mapModel (\m ->
         let newFrame = fn m.positions.frame 
+            oldFrame = m.positions.frame
             newPositions p f = { p | frame = f }
             newModel f = { m | positions = newPositions m.positions f }
         in
         if newFrame 
             |> Frame2d.originPoint 
-            |> Point2d.coordinatesIn m.positions.frame 
+            |> Point2d.coordinatesIn oldFrame
             |> Tuple.second 
-            |> Debug.log "frame y coord"
-            |> Quantity.plus (Length.centimeters (toFloat m.height - 32) |> Debug.log "ground level y coord")
+            --|> Debug.log "frame y coord"
+            |> Quantity.plus (Length.centimeters (toFloat m.height + 32)) -- |> Debug.log "ground level y coord")
             |> Quantity.greaterThan (Length.centimeters groundLevel) then
-            newModel m.positions.frame
+                if oldFrame
+                    |> Frame2d.originPoint 
+                    |> Point2d.coordinatesIn oldFrame
+                    |> Tuple.second 
+                    --|> Debug.log "frame y coord"
+                    |> Quantity.plus (Length.centimeters (toFloat m.height + 32)) -- |> Debug.log "ground level y coord")
+                    |> Quantity.greaterThan (Length.centimeters groundLevel) then
+                        newModel newFrame --newModel oldFrame -- figure out how to adjust
+                else
+                    newModel newFrame -- m 
         else
-            m
+            newModel newFrame 
         )
 
 
@@ -794,10 +798,16 @@ newMovement offset model {xComponent, yComponent, θ} =
         newθ = Quantity.plus θ currentθ
         newDir = 
             case (Quantity.lessThanZero xComponent, Quantity.lessThanZero yComponent) of
+                (True, True) -> Direction2d.fromAngle (Angle.degrees 225)
+                (True, False) -> Direction2d.fromAngle (Angle.degrees 225)
+                (False, True) -> Direction2d.fromAngle (Angle.degrees 45)
+                (False, False) -> Direction2d.fromAngle (Angle.degrees -45)
+                {-
                 (True, True) -> Direction2d.fromAngle (Angle.degrees -45)
                 (True, False) -> Direction2d.fromAngle (Angle.degrees -135)
                 (False, True) -> Direction2d.fromAngle (Angle.degrees 45)
                 (False, False) -> Direction2d.fromAngle (Angle.degrees 135)
+                -}
     in
     (
         { time = (currentTick_, newTime)
@@ -864,10 +874,19 @@ updateMothPositions model =
     in
     if mothFartingか model then
         let
-            vector = model.direction |> Vector2d.scaleBy (tickδ model |> Duration.inSeconds) |> Vector2d.rotateBy (Angle.radians (negate pi))
+            mothPosRelative = mothPos model |> Point2d.relativeTo model.positions.frame
+            vector = model.direction |> Vector2d.scaleBy (tickδ model |> Duration.inSeconds)
+            vectorRelative = model.direction |> Vector2d.relativeTo model.positions.frame |> Vector2d.scaleBy (tickδ model |> Duration.inSeconds)
+            mappedMoth = mapMothPosition (vector {- |> Vector2d.reverse  |> Vector2d.mirrorAcross (Axis2d.y)-} |> Point2d.translateBy) model
+            --mappedMoth = mapMothPosition (always (Point2d.translateBy vectorRelative mothPosRelative |> Point2d.placeIn model.positions.frame)) model
+            --mappedFrame = mapFramePosition (Frame2d.translateBy vector) model
+            --mappedMoth = mapMothPosition (always (Frame2d.originPoint mappedFrame.positions.frame)) mappedFrame
         in
-        mapMothPosition (Point2d.translateBy vector) model
-        |> mapFramePosition (Frame2d.translateBy vector)
+        mappedMoth
+        --model
+        --|> mapMothPosition (Point2d.translateBy vector)
+        |> mapFramePosition (vector |> Vector2d.mirrorAcross Axis2d.y |> Frame2d.translateBy )
+        --mapFramePosition (Frame2d.moveTo (mothPos mappedMoth)) mappedMoth
         |> generateFarts
 
     else if Q.enqueued movimientos then
@@ -900,17 +919,20 @@ updateMothPositions model =
                         Vector2d.withLength gasSpeed direction
 
                 in
+                model
                 --mapFramePosition (Frame2d.translateBy vector) model
                 --mapMothPosition (always (Point2d.interpolateFrom source destination percentComplete)) model
-                mapMothPosition (Point2d.translateBy vector) model
+                |> mapMothPosition (Point2d.translateBy (Vector2d.mirrorAcross Axis2d.x vector))
                 |> setMothDirection newDirection
+                |> deactivateFart
 
             Nothing ->
                 model
-        -- use that I guess
+                |> deactivateFart
 
     else
         model
+        |> deactivateFart
 
 setMothDirection : Vector -> Model -> Model
 setMothDirection vector =
@@ -930,19 +952,18 @@ newFart model =
     let
         (xc, yc) = model.direction |> Vector2d.components
         (translation, θ) = 
-            case (Quantity.lessThanZero xc, Quantity.lessThanZero yc) of
-                (True, True) -> (Point2d.translateBy (Vector2d.centimeters 36 36), Angle.degrees 215)
-                (True, False) -> (Point2d.translateBy (Vector2d.centimeters 36 0), Angle.degrees 135)
-                (False, True) -> (Point2d.translateBy (Vector2d.centimeters 0 36), Angle.degrees -45)
-                (False, False) -> (identity, Angle.degrees 45)
+            case (Quantity.greaterThanZero xc, Quantity.greaterThanZero yc) of
+                (True, True) -> (Point2d.translateBy (Vector2d.centimeters -22 -32), Angle.degrees -45)
+                (True, False) -> (Point2d.translateBy (Vector2d.centimeters 32 22), Angle.degrees 45)
+                (False, True) -> (Point2d.translateBy (Vector2d.centimeters 22 32), Angle.degrees -135)
+                (False, False) -> (Point2d.translateBy (Vector2d.centimeters 59 0 ), Angle.degrees 135)
     in
-    { initial = mothPos model |> translation -- must be translated for flipping/rotating
-    , θ = θ --Vector2d.reverse model.direction |> Direction2d.angleFrom
+    { initial = mothPos model |> translation -- model.positions.frame |> Frame2d.originPoint |> translation
+    , θ = θ
     , length = tickδ model |> Quantity.at fartVelocity |> Length.inCentimeters |> floor
     , created = currentTick model
     , active = True 
     } 
-    --{ initial = mothPos model, θ = mothθ model, length = 0, created = currentTick model, active = True } 
 
 
 generateFarts : Model -> Model
@@ -992,134 +1013,6 @@ cullCompletedMothMovements model =
 
 
 
-insertMothMovements : Model -> Model
-insertMothMovements model =
-    if mothFartingか model || mothFeedingか model then
-        model
-
-    else if mothMovements model |> Q.enqueued then
-        model
-
-    else
-        let
-            currentTick_ =
-                currentTick model
-
-            currentPos =
-                mothPos model
-
-            currentAngle =
-                mothθ model
-
-            enqueue =
-                flip Q.enqueue
-
-            durationPlus1000ms =
-                Quantity.plus (Duration.milliseconds 3000) currentTick_
-
-            durationPlus2000ms =
-                Quantity.plus (Duration.milliseconds 3000) durationPlus1000ms
-
-            durationPlus3000ms =
-                Quantity.plus (Duration.milliseconds 3000) durationPlus2000ms
-
-            durationPlus4000ms =
-                Quantity.plus (Duration.milliseconds 3000) durationPlus3000ms
-
-            durationPlus5000ms =
-                Quantity.plus (Duration.milliseconds 3000) durationPlus4000ms
-
-            durationPlus6000ms =
-                Quantity.plus (Duration.milliseconds 3000) durationPlus5000ms
-
-            durationPlus7000ms =
-                Quantity.plus (Duration.milliseconds 3000) durationPlus6000ms
-
-            durationPlus8000ms =
-                Quantity.plus (Duration.milliseconds 3000) durationPlus7000ms
-
-            θ1 =
-                Quantity.plus (Angle.radians halfPi) currentAngle
-
-            θ2 =
-                Quantity.plus (Angle.radians pi) θ1
-
-            θ3 =
-                Quantity.plus (Angle.radians (-1 * halfPi)) θ2
-
-            θ4 =
-                Quantity.plus (Angle.radians pi) θ3
-
-            pos1 =
-                Point2d.translateBy (Vector2d.centimeters -60 60) currentPos
-
-            pos2 =
-                Point2d.translateBy (Vector2d.centimeters 10 -60) pos1
-
-            pos3 =
-                Point2d.translateBy (Vector2d.centimeters 60 10) pos2
-
-            pos4 =
-                Point2d.translateBy (Vector2d.centimeters -60 10) pos3
-        in
-        mapMothMovements
-            (enqueue
-                { time = ( currentTick_, durationPlus1000ms )
-                , coords = ( currentPos, pos1 )
-                , angles = ( currentAngle, θ1 )
-                , direction = Direction2d.fromAngle (Angle.degrees -135)
-                }
-                >> enqueue
-                    { time = ( durationPlus1000ms, durationPlus2000ms )
-                    , coords = ( pos1, currentPos )
-                    , angles = ( θ1, currentAngle )
-                    , direction = Direction2d.fromAngle (Angle.degrees 45)
-                    }
-                >> enqueue
-                    { time = ( durationPlus2000ms, durationPlus3000ms )
-                    , coords = ( currentPos, pos2 )
-                    , angles = ( currentAngle, θ2 )
-                    , direction = Direction2d.fromAngle (Angle.degrees 45)
-                    }
-                >> enqueue
-                    { time = ( durationPlus3000ms, durationPlus4000ms )
-                    , coords = ( pos2, currentPos )
-                    , angles = ( θ2, currentAngle )
-                    , direction = Direction2d.fromAngle (Angle.degrees -135)
-                    }
-                >> enqueue
-                    { time = ( durationPlus4000ms, durationPlus5000ms )
-                    , coords = ( currentPos, pos3 )
-                    , angles = ( currentAngle, θ3 )
-                    , direction = Direction2d.fromAngle (Angle.degrees 135)
-                    }
-                >> enqueue
-                    { time = ( durationPlus5000ms, durationPlus6000ms )
-                    , coords = ( pos3, currentPos )
-                    , angles = ( θ3, currentAngle )
-                    , direction = Direction2d.fromAngle (Angle.degrees -45)
-                    }
-                >> enqueue
-                    { time = ( durationPlus6000ms, durationPlus7000ms )
-                    , coords = ( currentPos, pos4 )
-                    , angles = ( currentAngle, θ4 )
-                    , direction = Direction2d.fromAngle (Angle.degrees -45)
-                    }
-                >> enqueue
-                    { time = ( durationPlus7000ms, durationPlus8000ms )
-                    , coords = ( pos4, currentPos )
-                    , angles = ( θ4, currentAngle )
-                    , direction = Direction2d.fromAngle (Angle.degrees 135)
-                    }
-            )
-            model
-            |> deactivateFart
-
-
-
--- |> mapFrameMovements
-
-
 updateMothGeometry : Model -> Model
 updateMothGeometry model =
     updateMothPositions model
@@ -1159,7 +1052,7 @@ cullFarts : Model -> Model
 cullFarts model =
     mapPositions (\p -> 
         { p 
-        | farts = List.filter (.created >> Quantity.plus Duration.second >> Quantity.greaterThan (currentTick model)) p.farts
+        | farts = List.filter (.created >> Quantity.plus (Duration.seconds 5) >> Quantity.greaterThan (currentTick model)) p.farts
         })
     model
 
@@ -1167,11 +1060,11 @@ updateMothStatus : Model -> Model
 updateMothStatus model =
     updateMothGas model
         |> cullCompletedMothMovements
-        --|> insertMothMovements
         |> updateMothGeometry
         |> updateMothAction
         |> addNewMovements
         |> updateMothAnimation
+        |> updateNotifications
 
 
 
@@ -1272,6 +1165,7 @@ setWindow : Int -> Int -> Model -> Model
 setWindow newWidth newHeight =
     mapModel (\m -> { m | width = newWidth, height = newHeight })
         >> mapFramePosition (always (Frame2d.atPoint (Point2d.centimeters (newWidth |> toFloat) (newHeight |> toFloat))))
+        -- should CHECK
 
 
 {-| Input

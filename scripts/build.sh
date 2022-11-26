@@ -37,6 +37,7 @@ cp src/index.css $output_dir
 cp src/js/gamepad.js $output_dir
 cp src/js/audio.js $output_dir
 cp assets/*.png $output_dir/assets/
+cp assets/*.mp3 $output_dir/assets/
 
 if $dist; then
 	echo "Compressing client for distribution"

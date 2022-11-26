@@ -1,7 +1,7 @@
 port module Msg exposing
     ( Msg(..)
     , animationFrameSub, padButtonsSub, padConnectionSub, visibilitySub, keyboardSub, mouseSub, resizeSub
-    , pollPad, startFart, stopFart, generateGrass, initializeAudio, flutterMoth, initializeTime
+    , pollPad, startFart, stopFart, generateGrass, initializeAudio, flutterMoth, initializeTime, startBackgroundMusic
     , tNewKeyPress, tNewKeyRelease
     , animateGrass
     )
@@ -21,7 +21,7 @@ port module Msg exposing
 
 ## Msgs
 
-@docs pollPad, startFart, stopFart, generateGrass, initializeAudio, flutterMoth, initializeTime
+@docs pollPad, startFart, stopFart, generateGrass, initializeAudio, flutterMoth, initializeTime, startBackgroundMusic
 
 
 ## Selectors
@@ -36,8 +36,8 @@ import Json.Decode exposing (succeed)
 import Model exposing (Grass)
 import Random
 import Seeds
-import Time
 import Task
+import Time
 
 
 type Msg
@@ -194,6 +194,9 @@ port startFartSFX : () -> Cmd msg
 port stopFartSFX : () -> Cmd msg
 
 
+port startBGM : () -> Cmd msg
+
+
 initializeAudio : Cmd Msg
 initializeAudio =
     initializeAudioContext ()
@@ -207,6 +210,11 @@ startFart =
 stopFart : Cmd Msg
 stopFart =
     stopFartSFX ()
+
+
+startBackgroundMusic : Cmd Msg
+startBackgroundMusic =
+    startBGM ()
 
 
 {-| Random value generators

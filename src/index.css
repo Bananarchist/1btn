@@ -7,9 +7,14 @@ html {
   overflow: hidden;
 }
 
+audio {
+  display: none;
+}
+
 main {
   width: 100%;
   height: 100%;
+  background: skyblue;
 }
 
 #loadgamebtn {
@@ -18,11 +23,24 @@ main {
   height: 100%;
 }
 
-#moth {
+.moth {
   position: absolute;
   background: no-repeat url(assets/mothsheet.png) 0 -1080px;
   width: 64px;
   height: 64px;
+}
+
+
+#body {
+  background-position-y: 0;
+}
+
+#front-wing {
+  background-position-y: -65px;
+}
+
+#back-wing {
+  background-position-y: -129px;
 }
 
 .idle-moth {
@@ -35,10 +53,10 @@ main {
 
 @keyframes idleMoth {
   from {
-    background-position: 0 0;
+    background-position-x: 0;
   }
   to {
-    background-position: -192px 0;
+    background-position-x: -192px;
   }
 }
 
@@ -71,19 +89,19 @@ main {
 
 @keyframes initialFart {
   from {
-    background-position-x: 0;
+    background-position-x: 0px;
   }
   to {
-    background-position-x: -96px;
+    background-position-x: -99px;
   }
 }
 
 @keyframes fartTrail {
   from {
-    background-position-x: -160px;
+    background-position-x: -192px;
   }
   to {
-    background-position-x: -96px;
+    background-position-x: -136px;
   }
 }
 

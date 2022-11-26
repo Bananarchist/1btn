@@ -30,4 +30,4 @@ updateSlurps : Msg -> Model -> List (Cmd Msg)
 updateSlurps = always <| always [ Cmd.none ]
 
 playMusic : Msg -> Model -> List (Cmd Msg)
-playMusic = always <| always [ Cmd.none ]
+playMusic = always <| always [ Msg.startBackgroundMusic ]

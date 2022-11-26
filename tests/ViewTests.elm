@@ -15,8 +15,8 @@ suite : Test
 suite =
   [ test "Moth is in html" <|
     \_ -> 
-      Model.init 600 500
-      |> Game.view
+      Model.init 600 500 0
+      |> Game.view 
       |> Q.fromHtml
       |> Q.find [ Select.id "moth" ]
       |> Q.has [ Select.id "moth" ]

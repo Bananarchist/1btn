@@ -94,7 +94,6 @@ view =
             , Painter.farFieldView
             , Painter.nearFieldView
             , Painter.loverView
-            , Painter.fartView
             , Painter.mothView
             ]
         )

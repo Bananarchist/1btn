@@ -29,13 +29,15 @@ grassAnimationSeed =
 
 flutterMovements : Random.Generator MothFluttering
 flutterMovements =
-    Random.map3 
-        (\x y θ -> 
-            { xComponent = Length.centimeters x
-            , yComponent = Length.centimeters y
+    Random.map5 
+        (\flipX flipY x y θ -> 
+            { xComponent = Length.centimeters (if flipX then x |> negate else x)
+            , yComponent = Length.centimeters (if flipY then y |> negate else y)
             , θ = Angle.radians θ
             }
         )
+        bool
+        bool
         (Random.float 1 100)
         (Random.float 1 100)
         (Random.float 0 pi)

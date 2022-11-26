@@ -14,7 +14,7 @@ suite : Test
 suite = 
   controls
 
-init = Model.init 600 400
+init = Model.init 600 400 0
 
 controls : Test
 controls =

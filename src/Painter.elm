@@ -196,17 +196,30 @@ loverView =
 
 
 mothView : Model -> List (Html Msg)
-mothView =
-    buildl
-        [ Assets.moth
-        , Graphics.transform
+mothView model =
+    let
+        mothTransformations = 
+            Graphics.transform
             >> Graphics.translate Model.mothCoords
             >> Graphics.rotate Model.mothRot
             >> Graphics.mirrorX Model.mothMirroredか
             >> Graphics.attributes
-        ]
-        >> div
-        >> List.singleton
+        frontWingView =
+            buildl [ Assets.frontWing, mothTransformations ] >> div >> List.singleton
+        backWingView = 
+            buildl [ Assets.backWing, mothTransformations ] >> div >> List.singleton
+        bodyView = 
+            buildl [ Assets.body, mothTransformations ] >> div >> List.singleton
+    in
+    model
+        |> buildr
+            [ backWingView
+            , fartView
+            , bodyView
+            , frontWingView
+            ]
+
+
 
 
 fartView : Model -> List (Html Msg)

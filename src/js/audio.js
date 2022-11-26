@@ -11,23 +11,39 @@ function fart(ctx) {
     type: "square",
     frequency: frequencyFor(FartTone, 1),
   });
-  const gain = new GainNode(ctx, { gain: 0.1 });
+  const gain = new GainNode(ctx, { gain: 0.005 });
   oscillator.connect(gain);
   gain.connect(ctx.destination);
   oscillator.start(ctx.currentTime);
   return oscillator; //oscillator.stop(ctx.currentTime + 0.2);
 }
 
+function bgm(ctx) {
+  const el = document.querySelector("audio");
+  const track = ctx.createMediaElementSource(el);
+  const gain = new GainNode(ctx, { gain: 0.15 });
+  track.connect(gain);
+  gain.connect(ctx.destination);
+  setTimeout(() => el.play(), 500);
+  return track;
+}
+
 function manageAudio(app) {
   var ctx;
   var farting;
+  var playing;
   app.ports.initializeAudioContext.subscribe(() => {
     ctx = new window.AudioContext();
   });
   app.ports.startFartSFX.subscribe(() => {
-    /*if (!farting) {
+    if (!farting) {
       farting = fart(ctx);
-    }*/
+    }
+  });
+  app.ports.startBGM.subscribe(() => {
+    if(!playing) {
+      playing = bgm(ctx);
+    }
   });
   app.ports.stopFartSFX.subscribe(() => {
     if(farting) {
