@@ -486,15 +486,16 @@ farts model =
             let
                 --(dir, len) = ((Direction2d.fromAngle θ |> Direction2d.relativeTo model.positions.frame), (Length.centimeters 1))
                 (dir, len) = ((Direction2d.fromAngle θ), (Length.centimeters 1)) |> Debug.log "fart direction"
+                initialFart = initial |> Point2d.relativeTo model.positions.frame --Point2d.coordinatesIn model.positions.frame
             in
-            { coords = initial |> Point2d.coordinatesIn model.positions.frame, scale = 1, rotation = θ }
+            { coords = initialFart |> Point2d.coordinates, scale = 1, rotation = θ }
             :: (List.range 1 length |> List.map (\i -> 
                 { coords = 
-                    initial
+                    initialFart
                     --|> Point2d.relativeTo model.positions.frame
-                    |> Point2d.translateIn dir (Quantity.multiplyBy (toFloat i) len) 
-                    --|> Point2d.coordinates
-                    |> Point2d.coordinatesIn model.positions.frame
+                    |> Point2d.translateIn (dir |> Direction2d.relativeTo model.positions.frame) (Quantity.multiplyBy (toFloat i) len) 
+                    |> Point2d.coordinates
+                    --|> Point2d.coordinatesIn model.positions.frame
                 , scale = 1
                 , rotation = θ
                 }
@@ -951,14 +952,28 @@ newFart : Model -> Fart
 newFart model =
     let
         (xc, yc) = model.direction |> Vector2d.components
-        (translation, θ) = 
-            case (Quantity.greaterThanZero xc, Quantity.greaterThanZero yc) of
-                (True, True) -> (Point2d.translateBy (Vector2d.centimeters -22 -32), Angle.degrees -45)
+        θ = model.direction 
+            |> Vector2d.relativeTo model.positions.frame 
+            |> Vector2d.direction 
+            |> Maybe.map Direction2d.toAngle 
+            |> Maybe.withDefault (Angle.degrees 45)
+        translatedPoint =
+            mothPos model
+            |> Point2d.translateBy (Vector2d.centimeters -32 -10)
+            --Vector2d.rotateBy θ model.direction
+            --|> Point2d.translateBy
+            {- case (Quantity.greaterThanZero xc, Quantity.greaterThanZero yc) of
+                {-(True, True) -> (Point2d.translateBy (Vector2d.centimeters -22 -32), Angle.degrees -45)
                 (True, False) -> (Point2d.translateBy (Vector2d.centimeters 32 22), Angle.degrees 45)
                 (False, True) -> (Point2d.translateBy (Vector2d.centimeters 22 32), Angle.degrees -135)
-                (False, False) -> (Point2d.translateBy (Vector2d.centimeters 59 0 ), Angle.degrees 135)
+                (False, False) -> (Point2d.translateBy (Vector2d.centimeters 59 0 ), Angle.degrees 135)-}
+                (True, True) -> (Point2d.translateBy (Vector2d.centimeters -22 -32))
+                (True, False) -> (Point2d.translateBy (Vector2d.centimeters 32 22))
+                (False, True) -> (Point2d.translateBy (Vector2d.centimeters 22 32))
+                (False, False) -> (Point2d.translateBy (Vector2d.centimeters 59 0 ))
+                -}
     in
-    { initial = mothPos model |> translation -- model.positions.frame |> Frame2d.originPoint |> translation
+    { initial = Point2d.rotateAround (mothPos model) θ translatedPoint --mothPos model |> translation -- model.positions.frame |> Frame2d.originPoint |> translation
     , θ = θ
     , length = tickδ model |> Quantity.at fartVelocity |> Length.inCentimeters |> floor
     , created = currentTick model
