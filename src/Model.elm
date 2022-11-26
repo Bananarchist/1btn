@@ -89,6 +89,7 @@ module Model exposing
 
 -}
 
+import Arc2d
 import Axis2d
 import Direction2d
 import Angle exposing (Angle)
@@ -99,6 +100,7 @@ import Helpers exposing (allPredicates, anyPredicates, duple, flip, uncurry, wit
 import Length exposing (Length, Meters)
 import Pixels
 import Point2d exposing (Point2d)
+import Polyline2d
 import Quantity exposing (Quantity)
 import Queue as Q
 import Speed exposing (Speed)
@@ -213,6 +215,7 @@ type alias Fart =
     , length : Int
     , created : Duration
     , active : Bool
+    , direction : Vector
     }
 
 type alias Positions =
@@ -233,7 +236,7 @@ type Flower
 
 type alias Movement =
     { time : ( Duration, Duration )
-    , coords : ( Position, Position )
+    , coords : List Position
     , angles : ( Angle, Angle )
     , direction : Direction2d.Direction2d World
     }
@@ -482,7 +485,7 @@ farts model =
     model.positions
     |> .farts
     |> List.map
-        (\{initial, θ, length} ->
+        (\{initial, θ, length, direction} ->
             let
                 --(dir, len) = ((Direction2d.fromAngle θ |> Direction2d.relativeTo model.positions.frame), (Length.centimeters 1))
                 (dir, len) = ((Direction2d.fromAngle θ), (Length.centimeters 1)) |> Debug.log "fart direction"
@@ -491,11 +494,14 @@ farts model =
             { coords = initialFart |> Point2d.coordinates, scale = 1, rotation = θ }
             :: (List.range 1 length |> List.map (\i -> 
                 { coords = 
-                    initialFart
+                    initial
+                    --initialFart
                     --|> Point2d.relativeTo model.positions.frame
-                    |> Point2d.translateIn (dir |> Direction2d.relativeTo model.positions.frame) (Quantity.multiplyBy (toFloat i) len) 
-                    |> Point2d.coordinates
-                    --|> Point2d.coordinatesIn model.positions.frame
+                    --|> Point2d.translateIn (dir |> Direction2d.relativeTo model.positions.frame) (Quantity.multiplyBy (toFloat i) len) 
+                    --|> Point2d.translateIn (θ |> Direction2d.rotateBy (Angle.degrees 90) |> Direction2d.toAngle) (Quantity.multiplyBy (toFloat i) len) 
+                    --|> Point2d.coordinates
+                    |> Point2d.translateBy (Vector2d.scaleBy (toFloat i / 100) direction)
+                    |> Point2d.coordinatesIn model.positions.frame
                 , scale = 1
                 , rotation = θ
                 }
@@ -735,21 +741,23 @@ mapFramePosition fn =
         in
         if newFrame 
             |> Frame2d.originPoint 
-            |> Point2d.coordinatesIn oldFrame
+            |> Point2d.coordinates
+            --|> Point2d.coordinatesIn oldFrame
             |> Tuple.second 
             --|> Debug.log "frame y coord"
             |> Quantity.plus (Length.centimeters (toFloat m.height + 32)) -- |> Debug.log "ground level y coord")
             |> Quantity.greaterThan (Length.centimeters groundLevel) then
                 if oldFrame
                     |> Frame2d.originPoint 
-                    |> Point2d.coordinatesIn oldFrame
+                    |> Point2d.coordinates
+                    --|> Point2d.coordinatesIn oldFrame
                     |> Tuple.second 
                     --|> Debug.log "frame y coord"
                     |> Quantity.plus (Length.centimeters (toFloat m.height + 32)) -- |> Debug.log "ground level y coord")
                     |> Quantity.greaterThan (Length.centimeters groundLevel) then
-                        newModel newFrame --newModel oldFrame -- figure out how to adjust
+                        newModel oldFrame -- figure out how to adjust
                 else
-                    newModel newFrame -- m 
+                    m 
         else
             newModel newFrame 
         )
@@ -795,6 +803,9 @@ newMovement offset model {xComponent, yComponent, θ} =
         currentPos_ = mothPos model
         vector = Vector2d.xy xComponent yComponent
         newPt = Point2d.translateBy vector currentPos_
+        arc = Arc2d.from currentPos_ newPt θ
+        returnArc = Arc2d.from newPt currentPos_ (Angle.inRadians θ |> negate |> Angle.radians)
+        steps = Quantity.at fartVelocity (Duration.milliseconds 3000) |> Length.inCentimeters |> floor |> Debug.log "steps"
         currentθ = mothθ model
         newθ = Quantity.plus θ currentθ
         newDir = 
@@ -812,12 +823,12 @@ newMovement offset model {xComponent, yComponent, θ} =
     in
     (
         { time = (currentTick_, newTime)
-        , coords = (currentPos_, newPt)
+        , coords = arc |> Arc2d.segments steps |> Polyline2d.vertices 
         , angles = (currentθ, newθ)
         , direction = newDir
         }
     ,   { time = (newTime, Quantity.plus (Duration.milliseconds 3000) newTime)
-        , coords = (newPt, currentPos_)
+        , coords = returnArc |> Arc2d.segments steps |> Polyline2d.vertices 
         , angles = (newθ, currentθ)
         , direction = Direction2d.reverse newDir
         }
@@ -894,38 +905,38 @@ updateMothPositions model =
         case Q.dequeue movimientos of
             Just { time, coords, angles, direction } ->
                 --start, origin, end, destination, firstAngle, rotation } ->
-                let
-                    mθ = mothθ model
-                    mothAngle = 
-                        if Quantity.greaterThan (Angle.radians pi) mθ then
-                            mθ
-                        else
-                            Quantity.minus (Angle.radians halfPi) mθ
-                    ( start, end ) =
-                        time
-
-                    ( source, destination ) =
-                        coords
-
-                    ( oriented, orienting ) =
-                        angles
-
-                    percentComplete =
-                        (currentTick model |> Quantity.minus start |> Duration.inMilliseconds) / (end |> Quantity.minus start |> Duration.inMilliseconds)
-
-                    vector =
-                        Vector2d.from source destination |> Vector2d.scaleBy (percentComplete * 0.02) |> Vector2d.rotateBy (Angle.radians (negate halfPi))
-                   
-                    newDirection = 
-                        Vector2d.withLength gasSpeed direction
-
-                in
-                model
-                --mapFramePosition (Frame2d.translateBy vector) model
-                --mapMothPosition (always (Point2d.interpolateFrom source destination percentComplete)) model
-                |> mapMothPosition (Point2d.translateBy (Vector2d.mirrorAcross Axis2d.x vector))
-                |> setMothDirection newDirection
-                |> deactivateFart
+                case coords of 
+                    destination :: eventualDestiny ->
+                        let
+                            --mθ = mothθ model
+                            --mothAngle = 
+                             --   if Quantity.greaterThan (Angle.radians pi) mθ then
+                              --      mθ
+                               -- else
+                                --    Quantity.minus (Angle.radians halfPi) mθ
+                            --( oriented, orienting ) =
+                            --    angles
+                            --( source, destination ) =
+                            --    coords
+                            --( start, end ) =
+                            --    time
+                            --percentComplete =
+                             --   (currentTick model |> Quantity.minus start |> Duration.inMilliseconds) / (end |> Quantity.minus start |> Duration.inMilliseconds)
+                            --vector =
+                             --   Vector2d.from source destination |> Vector2d.scaleBy (percentComplete * 0.02) |> Vector2d.rotateBy (Angle.radians (negate halfPi))
+                            newDirection = 
+                                Vector2d.withLength gasSpeed direction
+                        in
+                        model
+                        --mapFramePosition (Frame2d.translateBy vector) model
+                        --mapMothPosition (always (Point2d.interpolateFrom source destination percentComplete)) model
+                        --|> mapMothPosition (Point2d.translateBy (Vector2d.mirrorAcross Axis2d.x vector))
+                        |> mapMothMovements (Q.map (\m -> { m | coords = eventualDestiny }))
+                        |> mapMothPosition (always destination)
+                        |> setMothDirection newDirection
+                        |> deactivateFart
+                    [] ->
+                        model
 
             Nothing ->
                 model
@@ -959,25 +970,16 @@ newFart model =
             |> Maybe.withDefault (Angle.degrees 45)
         translatedPoint =
             mothPos model
-            |> Point2d.translateBy (Vector2d.centimeters -32 -10)
-            --Vector2d.rotateBy θ model.direction
-            --|> Point2d.translateBy
-            {- case (Quantity.greaterThanZero xc, Quantity.greaterThanZero yc) of
-                {-(True, True) -> (Point2d.translateBy (Vector2d.centimeters -22 -32), Angle.degrees -45)
-                (True, False) -> (Point2d.translateBy (Vector2d.centimeters 32 22), Angle.degrees 45)
-                (False, True) -> (Point2d.translateBy (Vector2d.centimeters 22 32), Angle.degrees -135)
-                (False, False) -> (Point2d.translateBy (Vector2d.centimeters 59 0 ), Angle.degrees 135)-}
-                (True, True) -> (Point2d.translateBy (Vector2d.centimeters -22 -32))
-                (True, False) -> (Point2d.translateBy (Vector2d.centimeters 32 22))
-                (False, True) -> (Point2d.translateBy (Vector2d.centimeters 22 32))
-                (False, False) -> (Point2d.translateBy (Vector2d.centimeters 59 0 ))
-                -}
+            |> Point2d.relativeTo model.positions.frame
+            --|> Point2d.translateBy (Vector2d.centimeters -32 -10)
+            |> Point2d.placeIn model.positions.frame
     in
-    { initial = Point2d.rotateAround (mothPos model) θ translatedPoint --mothPos model |> translation -- model.positions.frame |> Frame2d.originPoint |> translation
+    { initial = Point2d.rotateAround (mothPos model) θ translatedPoint 
     , θ = θ
     , length = tickδ model |> Quantity.at fartVelocity |> Length.inCentimeters |> floor
     , created = currentTick model
     , active = True 
+    , direction = model.direction |> Vector2d.reverse
     } 
 
 
@@ -1015,8 +1017,8 @@ cullCompletedMothMovements model =
 
     else
         case model |> mothMovements |> Q.dequeue of
-            Just { time, angles } ->
-                if Quantity.greaterThan (Tuple.second time) (currentTick model) then
+            Just { coords, angles } ->
+                if List.isEmpty coords then
                     mapMothMovements Q.dequeued model
                         |> mapMothRotation (always (Tuple.second angles))
 

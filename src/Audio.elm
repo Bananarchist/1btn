@@ -16,7 +16,7 @@ updateAudioCmds msg model =
 updateFarts : Msg -> Model -> List (Cmd Msg)
 updateFarts msg model =
     [ Cmd.none ]
-    |> consIf (Msg.tNewKeyPress msg) Msg.startFart
+    |> consIf (Msg.tNewKeyPress msg && Model.mothFartingか model) Msg.startFart
     |> consIf (Msg.tNewKeyRelease msg) Msg.stopFart
     |> consIf (Model.anyPressedか model |> not) Msg.stopFart
 

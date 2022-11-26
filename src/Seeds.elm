@@ -38,8 +38,8 @@ flutterMovements =
         )
         bool
         bool
-        (Random.float 1 100)
-        (Random.float 1 100)
-        (Random.float 0 pi)
+        (Random.float 50 150)
+        (Random.float 50 100)
+        (Random.float (pi / 4) (pi + pi / 2))
 
     
