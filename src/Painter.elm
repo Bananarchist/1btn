@@ -2,10 +2,11 @@ module Painter exposing (..)
 
 import Assets
 import Graphics
-import Helpers exposing (appendIf, buildl, buildr, flip)
+import Helpers exposing (appendIf, buildl, buildr, flip, duple, uncurry)
 import Html exposing (Html)
 import Html.Attributes as Hats
-import Model exposing (Model)
+import Model exposing (EntityViewData, Model, ViewData)
+import Moth
 import Msg exposing (Msg)
 
 
@@ -14,40 +15,43 @@ div =
     flip Html.div []
 
 
-fieldView : Model -> List (Html Msg)
+fieldView : ViewData -> List (Html Msg)
 fieldView model =
     [ Html.div [ Hats.id "field" ] []
     ]
 
 
-skyView : Model -> List (Html Msg)
+skyView : ViewData -> List (Html Msg)
 skyView =
     Assets.sky
         >> div
         >> List.singleton
 
 
-seaView : Model -> List (Html Msg)
+seaView : ViewData -> List (Html Msg)
 seaView =
-    buildl
-        [ Assets.sea
-        , Graphics.transform
-            >> Graphics.translate Model.seaCoords
-            >> Graphics.attributes
-        ]
-        >> div
-        >> List.singleton
+    {- buildl
+       [ Assets.sea
+       , Graphics.transform
+           >> Graphics.translate Model.seaCoords
+           >> Graphics.attributes
+       ]
+       >> div
+       >> List.singleton
+    -}
+    always []
 
 
-playerView : Model -> List (Html Msg)
+playerView : ViewData -> List (Html Msg)
 playerView model =
     gasView model
         ++ notificationView model
 
 
-notificationView : Model -> List (Html Msg)
+notificationView : ViewData -> List (Html Msg)
 notificationView =
-    Model.notification
+    always Nothing
+        --Model.notification
         >> Maybe.map
             (Html.text
                 >> List.singleton
@@ -57,9 +61,9 @@ notificationView =
         >> Maybe.withDefault []
 
 
-gasView : Model -> List (Html Msg)
+gasView : ViewData -> List (Html Msg)
 gasView =
-    Model.gas
+    .gas
         >> String.fromFloat
         >> Hats.value
         >> List.singleton
@@ -74,31 +78,33 @@ gasView =
         >> List.singleton
 
 
-lizardView : Model -> List (Html Msg)
+lizardView : ViewData -> List (Html Msg)
 lizardView =
     buildl
         [ Assets.lizard
-        , Graphics.transform
-            >> Graphics.translate Model.lizardCoords
-            >> Graphics.attributes
+
+        --, Graphics.transform
+        -->> Graphics.translate Model.lizardSP
+        -->> Graphics.attributes
         ]
         >> div
         >> List.singleton
 
 
-birdView : Model -> List (Html Msg)
+birdView : ViewData -> List (Html Msg)
 birdView =
     buildl
         [ Assets.bird
-        , Graphics.transform
-            >> Graphics.translate Model.birdCoords
-            >> Graphics.attributes
+
+        --, Graphics.transform
+        --   >> Graphics.translate Model.birdSP
+        --  >> Graphics.attributes
         ]
         >> div
         >> List.singleton
 
 
-farFieldView : Model -> List (Html Msg)
+farFieldView : ViewData -> List (Html Msg)
 farFieldView =
     buildr
         [ treeView
@@ -106,7 +112,7 @@ farFieldView =
         ]
 
 
-treeView : Model -> List (Html Msg)
+treeView : ViewData -> List (Html Msg)
 treeView =
     always []
 
@@ -125,21 +131,21 @@ treeView =
 -}
 
 
-plantView : Model -> List (Html Msg)
+plantView : ViewData -> List (Html Msg)
 plantView =
-    Model.flowers
-        >> List.map
-            (buildl
-                [ .kind >> Assets.flower
-                , Graphics.transform
-                    >> Graphics.translate .coords
-                    >> Graphics.attributes
-                ]
-                >> div
-            )
+       .flowers
+           >> List.map
+               (buildl
+                   [ .kind >> Assets.flower
+                   , Graphics.transform
+                       >> Graphics.translate .coordinates
+                       >> Graphics.attributes
+                   ]
+                   >> div
+               )
 
 
-nearFieldView : Model -> List (Html Msg)
+nearFieldView : ViewData -> List (Html Msg)
 nearFieldView =
     buildl
         [ seaView
@@ -148,15 +154,16 @@ nearFieldView =
         ]
 
 
-grassView : Model -> List (Html Msg)
+grassView : ViewData -> List (Html Msg)
 grassView =
-    Model.visibleGrassSegments
-        >> List.map
+    .grass >>
+        List.map
             (buildl
                 [ Assets.grass
                 , Graphics.transform
-                    >> Graphics.translate .coords
-                    >> Graphics.mirrorX .mirrored
+                    >> Graphics.translate .coordinates
+                    -->> Graphics.translate .coords
+                    -->> Graphics.mirrorX .mirrored
                     >> Graphics.attributes
                 ]
                 >> div
@@ -165,7 +172,7 @@ grassView =
         >> List.singleton
 
 
-fireflyView : Model -> List (Html Msg)
+fireflyView : ViewData -> List (Html Msg)
 fireflyView =
     always []
 
@@ -183,48 +190,51 @@ fireflyView =
 -}
 
 
-loverView : Model -> List (Html Msg)
+mothTransformations : (ViewData -> EntityViewData) -> ViewData -> List (Html.Attribute Msg)
+mothTransformations accessor =
+    Graphics.transform
+        >> Graphics.translate (accessor >> .position)
+        >> Graphics.rotate (accessor >> .rotation)
+        >> Graphics.mirrorX (accessor >> .mirrorX)
+        >> Graphics.attributes
+
+        {-
+mothAssembly : (ViewData -> EntityViewData) -> { betweenBackAndBody : List (ViewData -> List (Html Msg)), betweenBodyAndFront : List (ViewData -> List (Html Msg)) } -> List (ViewData -> List (Html Msg))
+mothAssembly accessor { betweenBackAndBody, betweenBodyAndFront } =
+    (buildl [ Assets.backWing, mothTransformations accessor ] >> div >> List.singleton)
+        :: betweenBackAndBody
+        ++ (buildl [ Assets.body, mothTransformations accessor ] >> div >> List.singleton)
+        :: betweenBodyAndFront
+        ++ [ buildl [ Assets.frontWing, mothTransformations accessor ] >> div >> List.singleton ]
+        -}
+
+
+loverView : ViewData -> List (Html Msg)
 loverView =
-    buildl
-        [ Assets.lover
-        , Graphics.transform
-            >> Graphics.translate Model.loverCoords
-            >> Graphics.attributes
-        ]
-        >> div
-        >> List.singleton
+    mothParts (buildl [ Assets.lover, mothTransformations .lover ])
 
 
-mothView : Model -> List (Html Msg)
-mothView model =
-    let
-        mothTransformations = 
-            Graphics.transform
-            >> Graphics.translate Model.mothCoords
-            >> Graphics.rotate Model.mothRot
-            >> Graphics.mirrorX Model.mothMirroredか
-            >> Graphics.attributes
-        frontWingView =
-            buildl [ Assets.frontWing, mothTransformations ] >> div >> List.singleton
-        backWingView = 
-            buildl [ Assets.backWing, mothTransformations ] >> div >> List.singleton
-        bodyView = 
-            buildl [ Assets.body, mothTransformations ] >> div >> List.singleton
-    in
-    model
-        |> buildr
-            [ backWingView
+mothView : ViewData -> List (Html Msg)
+mothView =
+    mothParts (buildl [ Assets.moth, mothTransformations .moth ])
+
+mothParts : (ViewData -> List (Html.Attribute Msg)) -> ViewData -> List (Html Msg)
+mothParts enclosingAttrFn =
+    duple
+    >> Tuple.mapBoth enclosingAttrFn 
+        (buildl 
+            [ Assets.backWing >> div >> List.singleton
             , fartView
-            , bodyView
-            , frontWingView
-            ]
+            , Assets.mothBody >> div >> List.singleton
+            , Assets.frontWing >> div >> List.singleton
+            ])
+    >> uncurry Html.div
+    >> List.singleton
 
-
-
-
-fartView : Model -> List (Html Msg)
+fartView : ViewData -> List (Html Msg)
 fartView =
-    Model.farts
+    always []
+        --Model.farts
         >> List.concatMap
             -- for each fart stream
             (List.indexedMap
@@ -242,7 +252,6 @@ fartView =
             )
         >> Html.div [ Hats.id "farts" ]
         >> List.singleton
-
 
 
 {-

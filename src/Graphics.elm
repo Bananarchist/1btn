@@ -2,20 +2,26 @@ module Graphics exposing (attributes, clipPath, graphicsSubs, mirrorX, mirrorY, 
 
 import Angle exposing (Angle)
 import BoundingBox2d exposing (BoundingBox2d)
+import Constants exposing (ScreenPosition) 
 import Dict
 import Dict.Extra
 import Helpers exposing (consIf, flip, uncurry)
 import Html exposing (Attribute)
 import Html.Attributes as Hats
 import Length exposing (Length, Meters)
-import Model exposing (Model)
+import Model exposing (Model) --, ScreenPosition)
 import Msg exposing (Msg)
 import Point2d exposing (Point2d)
 import Quantity exposing (Quantity)
+import Pixels exposing (Pixels)
 
 
 type alias TransducerState a =
-    { initial : a, translation : Maybe ( Length, Length ), rotation : Maybe Angle.Angle, scale : Maybe ( Float, Float ) }
+    { initial : a
+    , translation : Maybe ( Quantity Float Pixels, Quantity Float Pixels )
+    , rotation : Maybe Angle.Angle
+    , scale : Maybe ( Float, Float ) 
+    }
 
 
 paintingFrames : Model -> Bool
@@ -32,7 +38,7 @@ updateGraphics : Msg -> Model -> Model
 updateGraphics msg model =
     case msg of
         Msg.ResizedWindow newWidth newHeight ->
-            Model.setWindow newWidth newHeight model
+            Model.setWindow (Pixels.int newWidth) (Pixels.int newHeight) model --Model.setWindow newWidth newHeight model
 
         _ ->
             model
@@ -60,18 +66,19 @@ transform a =
     { initial = a, translation = Nothing, rotation = Nothing, scale = Nothing }
 
 
-translate : (a -> ( Length, Length )) -> TransducerState a -> TransducerState a
+translate : (a -> ScreenPosition) -> TransducerState a -> TransducerState a
 translate mapper state =
     let
-        ( newX, newY ) =
+        (x, y) =
             mapper state.initial
+            |> Point2d.coordinates
     in
     case state.translation of
-        Just ( x, y ) ->
-            { state | translation = Just ( Quantity.plus x newX, Quantity.plus y newY ) }
+        Just ( oldX, oldY ) ->
+            { state | translation = Just ( Quantity.plus oldX x, Quantity.plus oldY y ) }
 
         Nothing ->
-            { state | translation = Just ( newX, newY ) }
+            { state | translation = Just ( x, y ) }
 
 
 rotate : (a -> Angle.Angle) -> TransducerState a -> TransducerState a
@@ -131,7 +138,7 @@ attributes : TransducerState a -> List (Attribute Msg)
 attributes state =
     let
         lengthToString =
-            Length.inCentimeters >> String.fromFloat
+            Pixels.toFloat >> String.fromFloat
     in
     [ state.translation |> Maybe.map (Tuple.mapBoth lengthToString lengthToString >> (\( x, y ) -> "translate(" ++ x ++ "px, " ++ y ++ "px)"))
     , state.scale |> Maybe.map (Tuple.mapBoth String.fromFloat String.fromFloat >> (\( x, y ) -> "scale(" ++ x ++ ", " ++ y ++ ")"))

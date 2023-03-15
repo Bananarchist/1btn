@@ -1,249 +1,233 @@
 module MothTests exposing (suite)
 
 import Angle
-import Duration
+import Aviary.Birds exposing (goldfinch, robin, thrush)
+import Axis2d
+import Constants
+import Direction2d
+import Duration exposing (Duration)
 import Expect
-import Fuzz
-import Helpers exposing (flip, uncurry)
+import Frame2d
+import Fuzz exposing (Fuzzer)
+import Helpers exposing (between, duple, flip, mapEach, uncurry, within)
 import Length
-import Model
+import Model exposing (Model)
 import Pixels
 import Point2d
+import QuadraticSpline2d
 import Quantity
 import Test exposing (Test, describe, fuzz, fuzz2, fuzz3, test, todo)
-
-
-positiveFloat =
-    Fuzz.floatAtLeast 0.0
-
-
-fuzzDuration =
-    Fuzz.map Duration.milliseconds
-
-
-updateMothStatus : Duration.Duration -> Model.Model -> Model.Model
-updateMothStatus tick =
-    Model.setCurrentTick tick >> Model.updateMothStatus >> Model.setLastTick tick
-
-fuzzStepper : Fuzz.Fuzzer Float -> Fuzz.Fuzzer (Float -> Model.Model -> Model.Model)
-fuzzStepper =
-    fuzzDuration
-    >> Fuzz.map (\val -> \iter -> updateMothStatus (Quantity.multiplyBy iter val))
+import Vector2d
+import Volume
+import Aviary.Birds exposing (starling)
+import Aviary.Birds exposing (cardinal)
+import Constants exposing (Position)
+import Constants exposing (Direction)
+import Aviary.Birds exposing (kestrel)
+import Util exposing (initModel, withLoverPos, withMappedMoth, withMothDirection, withMothOnFlower, withMothPosition, withMovements, iterateState, fuzzModel, initMoth, fuzzDirection)
 
 suite : Test
 suite =
-    moth
-
-init = Model.init 600 400 0
-
-step δ =
-    \which -> updateMothStatus (Quantity.multiplyBy which δ)
-
-
-moth : Test
-moth =
-    [ fuzz3 (Fuzz.floatRange 123.0 123456.0 |> fuzzStepper) positiveFloat positiveFloat "Moth angle clamped to 2pi" <|
-        \stepStatus f1 f2 ->
-            init
-            |> stepStatus (f1)
-            |> Model.setKeyboard True
-            |> stepStatus (f1 + f2)
-            |> Model.setKeyboard False
-            |> stepStatus (f1 + f2 * 2)
-            |> Model.setKeyboard True
-            |> stepStatus (f1 * 2 + f2 * 2)
-            |> Model.setKeyboard False
-            |> Model.mothθ
-            |> Debug.log "angle"
-            |> Quantity.lessThanOrEqualTo (Angle.radians (2 * pi))
-            |> Expect.equal True
-    , fuzz (Fuzz.floatRange 1000.0 1000000.0) "Moth moves with time while idling" <|
-        Duration.milliseconds
-            >> flip updateMothStatus init
-            >> Model.mothPos
-            >> Expect.all
-                [ Point2d.equalWithin
-                    Length.centimeter
-                    (Model.mothPos init)
-                    >> Expect.equal False
-                , Point2d.coordinates
-                    >> Tuple.mapBoth Quantity.isNaN Quantity.isNaN
-                    >> uncurry (&&)
-                    >> Expect.equal False
-                , Point2d.coordinates
-                    >> Tuple.mapBoth Quantity.isInfinite Quantity.isNaN
-                    >> uncurry (&&)
-                    >> Expect.equal False
-                ]
-    , fuzz (Fuzz.floatRange 1000.0 10000.0 |> fuzzStepper) "Moth does not go below ground level" <|
-        \stepStatus ->
-            let
-                model = init 
-                    |> Model.setGrass [(True, Model.NormalGrass)]
-                    |> Model.setKeyboard True
-                    |> stepStatus 1
-                    |> stepStatus 2
-                    |> stepStatus 3
-                    |> stepStatus 4
-                    |> stepStatus 5
-                    |> stepStatus 6
-                    |> stepStatus 7
-                    |> stepStatus 8
-                    |> stepStatus 9
-                    |> stepStatus 10
-                mothYCoord = Model.mothCoords model |> Tuple.second
-                mothAndGrassYCoords = Model.visibleGrassSegments model 
-                    |> List.map .coords 
-                    |> List.head 
-                    |> Maybe.map (Tuple.mapFirst (always mothYCoord)) 
-            in
-            mothAndGrassYCoords
-            |> Maybe.map (Debug.log "Moth and Grass coords" >> uncurry Quantity.greaterThan >> Expect.equal True)
-            |> Maybe.withDefault (Expect.fail "Moth is below grass")
-    , Test.only <| fuzz (Fuzz.floatRange 1000 100000 |> fuzzStepper) "Frame origin does not fall below ground level" <|
-        \stepStatus ->
-            let
-                model = init 
-                    |> Model.setKeyboard True
-                    |> stepStatus 1
-                    |> stepStatus 2
-                    |> stepStatus 3
-                    |> stepStatus 4
-                    |> stepStatus 5
-                    |> stepStatus 6
-                    |> stepStatus 7
-                    |> stepStatus 8
-                    |> stepStatus 9
-                    |> stepStatus 10
-                frameYCoord = Model.framePos model 
-                    |> Point2d.coordinates 
-                    |> Tuple.second 
-                    |> Quantity.plus (Length.centimeters 200)
-                frameAndGrassYCoords = Model.visibleGrassSegments model 
-                    |> List.map .coords 
-                    |> List.head 
-                    |> Maybe.map (Tuple.mapFirst (always frameYCoord)) 
-            in
-            frameAndGrassYCoords
-            --|> Maybe.map (Debug.log "Moth and Frame coords" >> uncurry Quantity.greaterThan >> Expect.equal True)
-            |> Maybe.map (uncurry Quantity.greaterThan >> Expect.equal True)
-            |> Maybe.withDefault (Expect.fail "Moth is below grass")
-    , Test.only <| fuzz (Fuzz.floatRange 200 450 |> fuzzStepper) "3KP produces 3 Farts" <|
-        \stepStatus ->
-            let 
-                model = 
-                    init
-                    |> Model.setKeyboard True
-                    |> stepStatus 1
-                    |> stepStatus 2
-                    |> Model.setKeyboard False
-                    |> stepStatus 3
-                    |> Model.setKeyboard True
-                    |> stepStatus 4
-                    |> Model.setKeyboard False
-                    |> stepStatus 5
-                    |> Model.setKeyboard True
-                    |> stepStatus 6
-                thenModel =
-                    Model.setKeyboard False model
-                    |> stepStatus 500000
-                fartTests = 
-                    (Model.farts model, Model.farts thenModel)
-                failString = Debug.toString model
-            in
-            fartTests
-            |> Tuple.mapBoth List.length List.length
-            |> Expect.all 
-                [ uncurry Expect.notEqual >> Expect.onFail (fartTests |> Debug.toString)
-                , Tuple.first >> Expect.equal 3 >> Expect.onFail failString
-                ]
-    , fuzz ((Fuzz.floatRange 1000.0 10000.0) |> fuzzStepper) "If keys are pressed, gas depletes" <|
-        \stepStatus ->
-            init
-                |> Model.setKeyboard True
-                |> stepStatus 1
-                |> Debug.log "Moth"
-                |> stepStatus 2
-                |> Debug.log "Moth again"
-                |> Model.gas
-                |> Expect.lessThan (Model.gas init)
-    , test "Gas should never fall below 0" <|
+    [ test "Key depressed (assuming moth starting gas > 0) puts moth into farting state" <|
         \_ ->
-            init
+            initModel
                 |> Model.setKeyboard True
-                |> updateMothStatus (Duration.milliseconds 1000000)
-                |> Model.gas
-                |> Expect.all
-                    [ Expect.atLeast 0
-                    , Expect.lessThan 100
-                    ]
-    , fuzz2 Fuzz.bool positiveFloat "Keys pressed and nonzero gas means moth is moving" <|
-        \kbか gas ->
+                |> Model.update
+                |> Model.mothFartingか
+                |> Expect.equal True
+    , fuzz (fuzzModel |> withMovements Nothing) "While idle, moth moves about" <|
+        \model ->
             let
-                updated =
-                    init |> Model.setKeyboard kbか |> updateMothStatus (Duration.milliseconds (gas * 1000))
+                (ogPos, newPos) =
+                    model
+                    |> duple
+                    |> Tuple.mapSecond
+                        ( iterateState (Duration.seconds 0.6) >> iterateState (Duration.seconds 1.0) )
+                    |> mapEach (Model.viewData >> .moth >> .position)
             in
-            Expect.equal (Model.mothFartingか updated) (kbか && Model.gas updated > 0)
-    , fuzz (fuzzDuration (Fuzz.floatRange 1000.0 10000.0)) "Moth changes angles while idling" <|
-        \δ ->
-            let
-                firstGo = init
-                    |> updateMothStatus δ
-            in
-            Quantity.equalWithin 
-                (Angle.radians (pi / 4)) 
-                (firstGo |> Model.mothθ)
-                (firstGo |> updateMothStatus (Quantity.plus δ (Duration.milliseconds 1500)) |> Model.mothθ)
-            |> Expect.equal False
-    , test "Moth feeds when near flowers with < 100% gas" <|
+            newPos
+                |> Point2d.equalWithin (Pixels.pixels 0.1) ogPos
+                |> Expect.equal False
+                |> Expect.onFail (Debug.toString ogPos ++ Debug.toString newPos)
+    , test "Moth loses gas while moving, stops moving when out of gas" <|
         \_ ->
+            let
+                overUseTime =
+                    Quantity.at_ Constants.gasPerSecondOfFarting (Volume.milliliters 120.0)
+            in
+            initModel
+                |> Model.setKeyboard True
+                |> iterateState (Duration.seconds 0.1)
+                |> iterateState overUseTime
+                |> iterateState (Duration.seconds 0.1)
+                |> Model.mothFartingか
+                |> Expect.equal False
+    , fuzz 
+        ( fuzzModel 
+            |> withLoverPos (Just <| Point2d.centimeters 100 50) 
+            |> withMothPosition (Point2d.centimeters 50 50)
+            |> withMothDirection Direction2d.x)
+        "When moth reaches lover, game is over" <|
+        \model ->
+            let
+                travelTime =
+                    Quantity.at_ Constants.metersPerSecondOfFarting (Length.centimeters 50)
+            in
+            model
+                |> Model.setKeyboard True
+                |> Model.update
+                |> iterateState travelTime
+                |> Model.gameOverか
+                |> Expect.equal True
+                |> Expect.onFail (Debug.toString model.moth.position ++ ", " ++ Debug.toString model.lover.position)
+    , fuzz 
+        (fuzzModel |> withMothPosition (Point2d.centimeters 100 1000)) 
+        "Camera follows moth when farting" <|
+        \initialModel ->
             let
                 model =
-                    init
-                        |> Model.setFlowers [ ( Model.Flower, 20 ) ]
+                    initialModel
                         |> Model.setKeyboard True
-                        |> updateMothStatus (Duration.milliseconds 1)
-                        |> updateMothStatus (Duration.milliseconds 1500)
-                        |> Model.setKeyboard False
-                        |> updateMothStatus (Duration.milliseconds 1501)
-                        |> updateMothStatus (Duration.milliseconds 2501)
-            in
-            Expect.equal (Model.mothFeedingか model) True
-    , test "Resting on flowers replenishes gas" <|
-        \_ ->
-            let
-                preFeed =
-                    init
-                        |> Model.setFlowers [ ( Model.Flower, 20 ) ]
-                        |> Model.setKeyboard True
-                        |> updateMothStatus (Duration.milliseconds 1000)
-                        |> Model.setKeyboard False
-                        |> updateMothStatus (Duration.milliseconds 1100)
+                        |> Model.update
+                        |> iterateState Duration.second
+                        |> duple
+                        |> Tuple.mapSecond (iterateState Duration.second)
 
-                postFeed =
-                    preFeed
-                        |> updateMothStatus (Duration.milliseconds 1200)
+                frameDistanceTraveled =
+                    model
+                    |> mapEach (.frame >> Frame2d.originPoint >> Point2d.at Constants.pixelsPerCentimeter)
+                    |> uncurry Point2d.distanceFrom
+
+                mothDistanceTraveled =
+                    model
+                    |> mapEach (.moth >> .position)
+                    |> uncurry Point2d.distanceFrom
+
             in
-            Expect.greaterThan (Model.gas preFeed) (Model.gas postFeed)
-    , test "Moth reaching lover == victory" <|
-        \_ ->
-            init
-                |> Model.setLover ( 20, 20 )
-                |> Model.setKeyboard True
-                |> updateMothStatus (Duration.milliseconds 500)
-                |> updateMothStatus (Duration.milliseconds 501)
-                |> Model.setKeyboard False
-                |> updateMothStatus (Duration.milliseconds 1500)
-                |> updateMothStatus (Duration.milliseconds 1501)
+            Quantity.equalWithin (Length.centimeters 0.1) frameDistanceTraveled mothDistanceTraveled
+                |> Expect.equal True
+                |> Expect.onFail (Debug.toString frameDistanceTraveled ++ ", " ++ Debug.toString mothDistanceTraveled)
+    , fuzz fuzzDirection "Moth never flies upside down" <|
+        \direction ->
+            let
+                model =
+                    initMoth (\m -> { m | direction = direction })
+                        |> Model.update
+
+                shouldMirror =
+                    Direction2d.xComponent direction < 0
+
+                angle =
+                    Direction2d.toAngle direction
+
+                expectedAngle =
+                    case ( shouldMirror, Direction2d.yComponent direction < 0 ) of
+                        ( True, True ) ->
+                            Quantity.plus angle (Angle.degrees 180) |> Angle.inDegrees
+
+                        ( True, False ) ->
+                            Quantity.minus angle (Angle.degrees 180) |> Angle.inDegrees
+
+                        ( False, _ ) ->
+                            angle |> Quantity.negate |> Angle.inDegrees
+
+                viewData =
+                    Model.viewData model
+            in
+            viewData
                 |> Expect.all
-                    [ Model.gameOverか >> Expect.equal True
+                    [ .moth >> .mirrorX >> Expect.equal shouldMirror
+                    , .moth >> .rotation >> Angle.inDegrees >> Expect.within (Expect.Absolute 0.1) expectedAngle
                     ]
-    , todo "Animation states for moth landing"
-    , todo "Fart lines"
-    , todo "Moth staying too low too long == lizard loss"
-    , todo "Moth staying too high too long == sun loss"
-    , todo "Moth idling in one spot too long == bird loss"
-    , todo "Won't land if gas is 100"
-    , todo "Cutscene motion?"
+                |> Expect.onFail
+                    (String.join " "
+                        [ "ShouldMirror:"
+                        , Debug.toString shouldMirror
+                        , "and expectedAngle:"
+                        , Debug.toString expectedAngle
+                        , "But received mirrorX:"
+                        , Debug.toString viewData.moth.mirrorX
+                        , "and angle:"
+                        , Debug.toString (viewData.moth.rotation |> Angle.inDegrees)
+                        ]
+                    )
+    , fuzz 
+        (fuzzModel 
+            |> withMothPosition (Point2d.centimeters 50 75)
+            |> withMothDirection (Direction2d.degrees -90))
+        "Moth may not go below ground" <|
+        \model ->
+            model
+                |> Model.setKeyboard True
+                |> Model.update
+                |> iterateState Duration.millisecond
+                |> .moth
+                |> .position
+                |> Point2d.translateIn Direction2d.negativeY (Quantity.half Constants.mothWidth)
+                |> Point2d.signedDistanceFrom Axis2d.x
+                |> Length.inCentimeters
+                |> Expect.greaterThan (Length.inCentimeters Constants.groundLevel)
+    , fuzz (fuzzModel |> withMothOnFlower )
+        "When moth is feeding, gas replenishes" <|
+        \model ->
+            let
+                initialGas =
+                    model |> Model.viewData |> .gas
+            in
+            model
+            |> iterateState (Duration.seconds 0.5)
+            |> iterateState (Duration.seconds 0.5)
+            |> Model.viewData
+            |> .gas
+            |> Expect.greaterThan initialGas
+    , fuzz 
+        (fuzzModel
+            |> withMappedMoth (Just <|
+                \model ->
+                    let
+                        ( flowerKind, flowerPos ) =
+                            List.foldl kestrel (Model.Normal, Point2d.origin) model.food.flowers
+                        moth = model.moth
+                    in
+                    { model
+                    | moth =
+                        { moth
+                        | position = Point2d.translateIn Direction2d.positiveY (Model.flowerHeight flowerKind) flowerPos
+                            |> Point2d.translateIn Direction2d.negativeX (Length.centimeters 100)
+                        , direction = Direction2d.positiveX
+                        , gas = Volume.milliliters 99
+                        } 
+                    }
+                    |> Model.setKeyboard True
+                    |> Model.update
+                    |> iterateState (Duration.seconds 0.4)
+                    |> Model.update
+                    
+                )
+        )
+        "When moth is feeding, {new} input causes takeoff" <|
+            \model ->
+                let
+                    expectFeeding =
+                        model |> Model.setKeyboard False |> Model.update
+                    expectEscapingFromFeeding =
+                        expectFeeding |> Model.setKeyboard True |> Model.update 
+                    expectSitting = 
+                        expectFeeding |> iterateState (Duration.seconds 0.5) 
+                    expectEscapingFromSitting =
+                        expectSitting |> Model.setKeyboard True |> Model.update
+                    expectIdling =
+                        expectEscapingFromSitting |> Model.setKeyboard False |> Model.update |> iterateState (Duration.seconds 1.5) |> Model.update
+                in
+                Expect.all
+                    [ kestrel expectFeeding >> Model.mothFeedingか >> Expect.equal True >> Expect.onFail "Moth not feeding"
+                    , kestrel expectEscapingFromFeeding >> Model.mothEscapingか >> Expect.equal True >> Expect.onFail "Moth not escaping from feeding"
+                    , kestrel expectSitting >> Model.mothSittingか >> Expect.equal True >> Expect.onFail "Moth not sitting"
+                    , kestrel expectEscapingFromSitting >> Model.mothEscapingか >> Expect.equal True >> Expect.onFail "Moth not escaping from sitting"
+                    , kestrel expectIdling >> Model.mothIdlingか >> Expect.equal True >> Expect.onFail "Moth not idling"
+                    , kestrel expectIdling >> .moth >> .position >> Point2d.yCoordinate >> Quantity.greaterThan (expectSitting.moth.position |> Point2d.yCoordinate) >> Expect.equal True
+                    ] model
     ]
-        |> describe "Moth tests"
+        |> describe "Moth Tests"
+
+

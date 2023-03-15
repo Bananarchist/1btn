@@ -14,7 +14,7 @@ audio {
 main {
   width: 100%;
   height: 100%;
-  background: skyblue;
+  background: rgba(0,0,30,1);
 }
 
 #loadgamebtn {
@@ -23,29 +23,51 @@ main {
   height: 100%;
 }
 
-.moth {
+#moth {
   position: absolute;
-  background: no-repeat url(assets/mothsheet.png) 0 -1080px;
-  width: 64px;
-  height: 64px;
+  width: 74px;
+  height: 40px;
+  top: -20px;
+  left: -37px;
 }
 
-
-#body {
-  background-position-y: 0;
+#lover {
+  position: absolute;
+  width: 74px;
+  height: 40px;
+  top: -20px;
+  left: -37px;
 }
 
-#front-wing {
-  background-position-y: -65px;
+.moth-body {
+  --final-cell: 0px;
+  position: absolute;
+  top: 20px;
+  left: 1px;
+  width: 62px;
+  height: 24px;
+  background: no-repeat url(assets/mothsheet.png) 0 0px;
 }
 
-#back-wing {
-  background-position-y: -129px;
+.moth-front-wing {
+  --final-cell: -224px;
+  position: absolute;
+  width: 74px;
+  height: 40px;
+  background: no-repeat url(assets/mothsheet.png) 0 -24px;
+}
+
+.moth-back-wing {
+  --final-cell: -224px;
+  position: absolute;
+  width: 74px;
+  height: 40px;
+  background: no-repeat url(assets/mothsheet.png) 0 -24px;
 }
 
 .idle-moth {
   animation-name: idleMoth;
-  animation-duration: 800ms;
+  animation-duration: 200ms;
   animation-timing-function: steps(3);
   animation-iteration-count: infinite;
   animation-direction: alternate;
@@ -56,7 +78,7 @@ main {
     background-position-x: 0;
   }
   to {
-    background-position-x: -192px;
+    background-position-x: var(--final-cell);
   }
 }
 
@@ -110,7 +132,8 @@ main {
     opacity: 0.95;
   }
   to {
-    opacity: 0;
+    /*opacity: 0;*/
+    opacity: 0.95;
   }
 }
 /* #grasses {} */
@@ -119,7 +142,7 @@ main {
   position: absolute;
   background: no-repeat url(assets/grass.png) 0 -1080px;
   width: 32px;
-  height: 32px;
+  height: 40px;
 }
 
 .grass-1 {
@@ -156,10 +179,10 @@ main {
 
 @keyframes grassAnimation {
   from {
-    background-position-y: 0;
+    background-position-x: 0;
   }
   to {
-    background-position-y: -96px;
+    background-position-x: -96px;
   }
 }
 
@@ -168,8 +191,27 @@ main {
 .flower {
   position: absolute;
   background: no-repeat url(assets/flower.png) 0 -1080px;
-  width: 176px;
-  height: 281px;
+  width: 200px;
+  height: 285px;
+}
+
+.flower-1 {
+  top: -240px;
+  background-position-y: 0px;
+}
+
+
+/* #trees */
+
+.tree {
+  position: absolute;
+  background: no-repeat url(assets/tree.png) 0 -1080px;
+}
+
+.tree-1 {
+  background-position: 0 0;
+  width: 390px;
+  height: 1043px;
 }
 
 #sea {
@@ -179,7 +221,7 @@ main {
 }
 
 #sky {
-  background: skyblue;
+  background: rgba(0,0,30,1);
 }
 
 .notification {

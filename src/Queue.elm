@@ -1,4 +1,4 @@
-module Queue exposing (Queue, clear, dequeue, dequeued, enqueue, enqueued, map)
+module Queue exposing (Queue, clear, dequeue, dequeued, enqueue, enqueued, map, budgeInFrontOf)
 
 
 type alias Queue a =
@@ -7,8 +7,8 @@ type alias Queue a =
 
 {-| Add item to end of queue
 -}
-enqueue : Queue a -> a -> Queue a
-enqueue q element =
+enqueue : a -> Queue a -> Queue a
+enqueue element q =
     List.append q [ element ]
 
 
@@ -30,7 +30,7 @@ dequeued =
 -}
 enqueued : Queue a -> Bool
 enqueued =
-    List.length >> (==) 0 >> not
+    List.isEmpty >> not
 
 
 {-| Apply function to first item in queue
@@ -50,3 +50,10 @@ map fn q =
 clear : Queue a -> Queue a
 clear =
     always []
+
+
+{-| Put a queue in front of a queue -}
+budgeInFrontOf : Queue a -> Queue a -> Queue a
+budgeInFrontOf q budger =
+    budger ++ q
+

@@ -1,45 +1,37 @@
-module Assets exposing (moth, lizard, bird, lover, grass, fart, sky, firefly, tree, sea, plant, flower, body, frontWing, backWing)
+module Assets exposing (moth, lizard, bird, lover, grass, fart, sky, firefly, tree, sea, plant, flower, mothBody, frontWing, backWing)
 
 import Helpers exposing (appendIf)
 import Msg exposing (Msg)
-import Model exposing (Model, Grass(..), Flower(..))
+import Model exposing (Model, ViewData, Flower(..))
 import Html exposing (Attribute)
 import Html.Attributes as Hats
 
 {-| Moth -}
-moth : Model -> List (Attribute Msg)
+moth : ViewData -> List (Attribute Msg)
 moth = 
     always 
         [ Hats.id "moth" 
-        , Hats.class "idle-moth"
-        --, Hats.style "background-position" "0px 0px"
         ]
 
-body : Model -> List (Attribute Msg)
-body =
+mothBody : ViewData -> List (Attribute Msg)
+mothBody =
     always 
-        [ Hats.id "body" 
-        , Hats.class "moth"
+        [ Hats.class "moth-body" 
         , Hats.class "idle-moth"
-        --, Hats.style "background-position" "0px 0px"
         ]
 
-frontWing : Model -> List (Attribute Msg)
+frontWing : ViewData -> List (Attribute Msg)
 frontWing =
     always 
-        [ Hats.id "front-wing" 
-        , Hats.class "moth"
+        [ Hats.class "moth-front-wing" 
         , Hats.class "idle-moth"
-        --, Hats.style "background-position" "0px 0px"
         ]
 
-backWing : Model -> List (Attribute Msg)
+backWing : ViewData -> List (Attribute Msg)
 backWing =
     always 
-        [ Hats.id "back-wing" 
-        , Hats.class "moth"
+        [ Hats.class "moth-back-wing" 
         , Hats.class "idle-moth"
-        --, Hats.style "background-position" "0px 0px"
         ]
 
 fart : Bool -> List (Attribute Msg)
@@ -52,16 +44,16 @@ fart first =
     ]
 
 {-| NPCs -}
-lizard : Model -> List (Attribute Msg)
+lizard : ViewData -> List (Attribute Msg)
 lizard = always 
     [ Hats.id "lizard"
     ]
 
-bird : Model -> List (Attribute Msg)
+bird : ViewData -> List (Attribute Msg)
 bird = always 
     [ Hats.id "bird" ]
 
-lover : Model -> List (Attribute Msg)
+lover : ViewData -> List (Attribute Msg)
 lover = 
     always
         [ Hats.id "lover"
@@ -69,11 +61,11 @@ lover =
         ]
 
 {-| Scene -}
-grass : { a | kind : Grass, animated : Bool } -> List (Attribute Msg)
+grass : a -> List (Attribute Msg)
 grass grass_ = 
     let
-        kind = 
-            case grass_.kind of
+        kind = [ Hats.class "grass-1"]
+        {-case grass_.kind of
                 NormalGrass ->
                     [ Hats.class "grass-1" ]
                 DenseGrass ->
@@ -85,14 +77,15 @@ grass grass_ =
                 CloveredGrass ->
                     [ Hats.class "grass-5" ]
                 ShoreLineGrass ->
-                    [ Hats.class "grass-6" ]
+                    [ Hats.class "grass-6" ]-}
     in
     Hats.class "grass"
     :: kind
-    |> appendIf grass_.animated (Hats.class "grass-animated")
+    |> appendIf True (Hats.class "grass-animated")
+    --|> appendIf grass_.animated (Hats.class "grass-animated")
 
 
-sky : Model -> List (Attribute Msg)
+sky : ViewData -> List (Attribute Msg)
 sky = 
     always 
     [ Hats.id "sky"
@@ -105,7 +98,7 @@ firefly = []
 tree : List (Attribute Msg)
 tree = []
 
-sea : Model -> List (Attribute Msg)
+sea : ViewData -> List (Attribute Msg)
 sea = always 
     [ Hats.id "sea" ]
 
@@ -118,5 +111,4 @@ flower flower_ =
         _ -> 
             [ Hats.class "flower-1"
             , Hats.class "flower"
-            , Hats.style "background-position" "-92px -124px"
             ]

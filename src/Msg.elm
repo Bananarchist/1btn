@@ -1,7 +1,7 @@
 port module Msg exposing
     ( Msg(..)
     , animationFrameSub, padButtonsSub, padConnectionSub, visibilitySub, keyboardSub, mouseSub, resizeSub
-    , pollPad, startFart, stopFart, generateGrass, initializeAudio, flutterMoth, initializeTime, startBackgroundMusic
+    , pollPad, startFart, stopFart, {-generateGrass,-} initializeAudio, flutterMoth, initializeTime, startBackgroundMusic
     , tNewKeyPress, tNewKeyRelease
     , animateGrass
     )
@@ -33,11 +33,12 @@ port module Msg exposing
 import Browser.Events
 import Duration
 import Json.Decode exposing (succeed)
-import Model exposing (Grass)
+import Model exposing (MothFluttering)
 import Random
-import Seeds
 import Task
 import Time
+import Seeds
+import Constants exposing (QuadraticSpline)
 
 
 type Msg
@@ -61,9 +62,9 @@ type Msg
     | MouseDown
     | MouseReleased
       --| Random values
-    | GrassGenerated (List ( Bool, Grass ))
+--    | GrassGenerated (List ( Bool, Grass ))
     | GrassAnimations (List Bool)
-    | MothFlutterings (List Seeds.MothFluttering)
+    | MothFlutterings (List QuadraticSpline)
 
 
 {-| Helpers
@@ -219,10 +220,12 @@ startBackgroundMusic =
 
 {-| Random value generators
 -}
+{-
 generateGrass : Int -> Cmd Msg
 generateGrass units =
     Random.list units Seeds.grassSeed
         |> Random.generate GrassGenerated
+-}
 
 
 animateGrass : Int -> Cmd Msg

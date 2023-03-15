@@ -1,1231 +1,1438 @@
 module Model exposing
-    ( Model, Flower(..), Grass(..)
-    , init, setGrassAnimations, grassAnimationsCompleteか, anyPendingMothMovementsか, setMothMovements, currentTickか, addNotification
-    , anyNotifications, notification, seaCoords
-    , gas, mothRot, mothScale, mothPos, farts, gameOverか, mothMovingか, mothLandingか, mothFartingか, mothFeedingか, mothTakingOffか
-    , birdScale, birdPos, lizardPos, lizardScale, loverPos, loverScale
-    , visibleGrassSegments, fireflies, trees, flowers
-    , anyPressedか, listeningか, padCount
-    , updateMothStatus, updateGameState
-    , lizardPosΔ, birdPosΔ, loverPosΔ, setLover
-    , setGrass, setFlowers
-    , setWindow
-    , setKeyboard, setMouse, setPad, setListeningPad
-    , birdCoords, framePos, lizardCoords, loverCoords, mothCoords, mothMirroredか, mothθ, setCurrentTick, setLastTick, setListeningControls
+    ( update
+    , Model, ViewData, EntityViewData, init
+    , gameOverか, viewData
+    , setPad, setKeyboard, setMouse, setListeningPad, setListeningControls, anyPressedか, listeningか, padCount, justPressedか, justReleasedか, pressedFor
+    , setLastTick, setCurrentTick
+    , setWindow, anyNotificationsか
+    , MothFluttering, State(..)
+    , mothFartingか, mothFeedingか, mothPendingMovementsか, mothIdlingか, mothSittingか, mothEscapingか
+    , setIdleMovements
+    , Flower(..)
+    , flowerHeight, flowerLandingYComponent
     )
 
 {-| Model and API
 
 
+# High Level
+
+@docs update
+
+
 ## Types
 
-@docs Model, MothState, Flower, Grass
+@docs Model, ViewData, EntityViewData, init
 
 
-## Constructors
+## Game State
 
-@docs init
-
-
-## Selectors
+@docs gameOverか, viewData
 
 
-### System
+# System
 
-@docs anyNotifications, notification, currentTickか
-
-
-### Moth
-
-@docs mothState, gas, mothRot, mothScale, mothPos, farts, gameOverか, mothMovingか, mothLandingか, mothFartingか, mothFeedingか, mothTakingOffか
+This type and assorted functions are for managing controls, time and the browser
 
 
-### NPCs
+## Controls
 
-@docs birdScale, birdPos, lizardPos, lizardScale, loverPos, loverScale
-
-
-### Map
-
-@docs visibleGrassSegments, fireflies, trees, flowers
+@docs setPad, setKeyboard, setMouse, setListeningPad, setListeningControls, anyPressedか, listeningか, padCount, anyPressedか, justPressedか, justReleasedか, pressedFor
 
 
-### Controls
+## Time
 
-@docs anyPressedか, listeningか, padCount
-
-
-## Mutators
+@docs setLastTick, setCurrentTick, tickδ
 
 
-### System
+## Output
 
-@docs setTick
-
-
-### Moth
-
-@docs updateMothPos, updateMothStatus, updateGameState
+@docs setWindow, anyNotificationsか
 
 
-### NPCs
-
-@docs lizardPosΔ, birdPosΔ, loverPosΔ, setLover
+# Moth
 
 
-### Map
+## Types
 
-@docs setGrass, setFlowers
-
-
-### Graphics
-
-@docs setWindow
+@docs MothFluttering, State
 
 
-### Controls
+## Getters
 
-@docs setKeyboard, setMouse, setPad, setListeningPad, setListeningPad
+@docs mothFartingか, mothFeedingか, mothPendingMovementsか, mothIdlingか, mothSittingか, mothEscapingか
+
+
+## Setters
+
+@docs setIdleMovements
+
+
+# Food
+
+
+## Types
+
+@docs Flower
+
+
+## Getters
+
+@docs flowerHeight, flowerLandingYComponent
 
 -}
 
-import Arc2d
-import Axis2d
-import Direction2d
 import Angle exposing (Angle)
-import BoundingBox2d exposing (BoundingBox2d)
+import Area
+import Aviary.Birds exposing (cardinal, finchStar, kestrel, phoenix, starling)
+import Axis2d
+import BoundingBox2d
+import Constants as C exposing (Direction, Distance, Frame, Gas, HitBox, Position, PursuitPath, QuadraticSpline, ScreenPosition, WalkingPath, gasPerSecondOfFarting, metersPerSecondIdling, metersPerSecondOfFarting, mothHeight, mothWidth, pixelsPerCentimeter)
+import Direction2d
 import Duration exposing (Duration)
-import Frame2d exposing (Frame2d)
-import Helpers exposing (allPredicates, anyPredicates, duple, flip, uncurry, within)
-import Length exposing (Length, Meters)
-import Pixels
-import Point2d exposing (Point2d)
-import Polyline2d
+import Frame2d
+import Helpers exposing (allPredicates, anyPredicates, appendIf, between, buildl, curry, defaultTo, duple, dupleInto, flip, liftTuple, mapEach, nearest, uncurry, within)
+import Length
+import LineSegment2d exposing (LineSegment2d)
+import List.Extra
+import Maybe.Extra
+import Parameter1d
+import Pixels exposing (Pixels)
+import Point2d
+import Polyline2d exposing (Polyline2d)
+import QuadraticSpline2d exposing (QuadraticSpline2d)
 import Quantity exposing (Quantity)
 import Queue as Q
-import Speed exposing (Speed)
-import Vector2d exposing (Vector2d)
-
-
-{-| Constants
--}
-gasMeters : Float
-gasMeters = 0.5
-
-gasSpeed : Length.Length
-gasSpeed =
-    Length.meters gasMeters
-
-
-cameraLag : Duration
-cameraLag =
-    Duration.milliseconds 400
-
-
-fartVelocity : Speed.Speed
-fartVelocity =
-    Speed.metersPerSecond gasMeters
-
-groundLevel : Float
-groundLevel = -700
-
-halfPi : Float
-halfPi = pi / 2
-
-quarterPi : Float
-quarterPi = pi / 4
-
-tau : Float
-tau = 2 * pi
-
-
-gasDepletion : Float
-gasDepletion =
-    10
-
-
-{- Types -}
-type Grass
-    = NormalGrass
-    | DenseGrass
-    | TallGrass
-    | FloweringGrass
-    | CloveredGrass
-    | ShoreLineGrass
-
-
+import Vector2d
+import Volume
 
 
 type alias Model =
-    { controls : Controls
-    , positions : Positions
-    , movements : Movements
-    , gas : Float
-    , direction : Vector
-    , θ : Angle
-    , lastTick : Duration
-    , currentTick : Duration
-    , width : Int
-    , height : Int
-    , random : RandomValues
-    , notifications : List (Duration, String)
+    { system : System
+    , moth : Moth
+    , frame : Frame
+    , lover : Moth
+    , phase : Phase
+    , food : Food
+    , spider : Antagonist
+    , bat : Antagonist
     }
 
 
+type alias EntityViewData =
+    { position : ScreenPosition
+    , mirrorX : Bool
+    , rotation : Angle
+    }
+
+
+type alias ViewData =
+    { moth : EntityViewData
+    , lover : EntityViewData
+    , gas : Float
+    , grass : List { coordinates : ScreenPosition }
+    , flowers : List { coordinates : ScreenPosition, kind : Flower }
+    }
+
+
+init : Int -> Int -> Float -> Model
+init width height currentTick =
+    let
+        moth =
+            mothInit
+
+        model =
+            { system = systemInit width height currentTick
+            , moth = moth
+            , frame = Frame2d.atOrigin |> Frame2d.reverseY
+            , lover = { moth | position = Point2d.translateIn Direction2d.positiveX (Length.centimeters 500) moth.position }
+            , phase = Playing
+            , food = initFood
+            , spider = initSpider
+            , bat = initBat
+            }
+    in
+    centerCameraOn model.moth.position model
+
+
+update : Model -> Model
+update model =
+    let
+        tδ =
+            tickδ model.system
+
+        mothStateUpdated =
+            model
+                |> mapMoth
+                    (updateState
+                        { elapsedTime = tδ
+                        , isPressed = anyPressedか model
+                        , controlStateJustChanged = justPressedか model || justReleasedか model
+                        }
+                    )
+                |> landOnNearbyFlower
+                |> updateFlowerIndex
+                |> updateSpider
+                |> updateBat
+
+        gamePhaseUpdated =
+            updateGamePhase mothStateUpdated
+    in
+    gamePhaseUpdated
+        |> updateCamera model
+        |> updateNotifications
+
+
+viewData : Model -> ViewData
+viewData model =
+    { moth =
+        let
+            angle =
+                Direction2d.toAngle model.moth.direction
+
+            ( xLtz, yLtz ) =
+                Direction2d.components model.moth.direction |> mapEach ((>) 0)
+        in
+        { position = model.moth.position |> Point2d.at_ pixelsPerCentimeter |> Point2d.relativeTo model.frame
+        , mirrorX = xLtz
+        , rotation =
+            case ( xLtz, yLtz ) of
+                ( True, True ) ->
+                    Quantity.plus angle (Angle.degrees 180)
+
+                ( True, False ) ->
+                    Quantity.minus angle (Angle.degrees 180)
+
+                ( _, _ ) ->
+                    Quantity.negate angle
+        }
+    , lover =
+        { position = model.lover.position |> Point2d.at_ pixelsPerCentimeter |> Point2d.relativeTo model.frame
+        , mirrorX = False
+        , rotation = Angle.degrees 0
+        }
+    , gas = Volume.inMilliliters model.moth.gas
+    , grass =
+        List.range -75 75
+            |> List.map
+                ((*) 32
+                    >> toFloat
+                    >> flip Point2d.centimeters 0.0
+                    >> Point2d.at_ pixelsPerCentimeter
+                    >> Point2d.relativeTo model.frame
+                    >> (\p -> { coordinates = p })
+                )
+    , flowers = List.map (\( f, p ) -> { coordinates = p |> Point2d.at_ pixelsPerCentimeter |> Point2d.relativeTo model.frame, kind = f }) model.food.flowers
+    }
+
+
+mapSystem : (System -> System) -> Model -> Model
+mapSystem fn model =
+    { model | system = fn model.system }
+
+
+mapMoth : (Moth -> Moth) -> Model -> Model
+mapMoth fn model =
+    { model | moth = fn model.moth }
+
+
+mapFood : (Food -> Food) -> Model -> Model
+mapFood fn model =
+    { model | food = fn model.food }
+
+
+mapSpider : (Antagonist -> Antagonist) -> Model -> Model
+mapSpider fn model =
+    { model | spider = fn model.spider }
+
+
+mapBat : (Antagonist -> Antagonist) -> Model -> Model
+mapBat fn model =
+    { model | bat = fn model.bat }
+
+
+{-| System
+-}
+type alias System =
+    { controls : Controls
+    , lastTick : Duration
+    , currentTick : Duration
+    , width : Quantity Int Pixels
+    , height : Quantity Int Pixels
+    , notifications : Q.Queue ( Duration, String )
+    }
+
+
+type ControlState
+    = PressedAt Duration
+    | ReleasedAt Duration
+    | Inactive
+
+
 type alias Controls =
-    { kb : Bool
-    , mouse : Bool
-    , gp : Bool
+    { kb : ControlState
+    , mouse : ControlState
+    , gp : ControlState
     , input : Bool
     , padCount : Int
     }
 
 
-type World
-    = World
-
-type Screen
-    = Screen
-
-type Local
-    = Local
-
-
-type alias Position =
-    Point2d Meters World
-
-type alias ScreenPosition =
-    Point2d Meters Screen
-
-type alias Vector =
-    Vector2d Meters World
-
-
-type alias Frame =
-    Frame2d Meters World { defines : Screen }
-
-
-type alias Coordinates =
-    ( Quantity Float Meters, Quantity Float Meters )
-
-
-type alias Fart =
-    { initial : Position
-    , θ : Angle
-    , length : Int
-    , created : Duration
-    , active : Bool
-    , direction : Vector
-    }
-
-type alias Positions =
-    { moth : Position
-    , flowers : List ( Flower, Position )
-    , grass : List ( Bool, Grass )
-    , lover : Position
-    , frame : Frame
-    , farts : List Fart
-    }
-
-type alias RandomValues =
-    { grass : (Duration, List Bool) }
-
-type Flower
-    = Flower
-
-
-type alias Movement =
-    { time : ( Duration, Duration )
-    , coords : List Position
-    , angles : ( Angle, Angle )
-    , direction : Direction2d.Direction2d World
-    }
-
-
-{-| type MothAnimation
-= Flutter Remaining
-| FlutterTurn Remaining
-| StartFart Remaining
-| LandOn ( Float, Float ) Remaining
--}
-type alias Movements =
-    { moth : Q.Queue Movement
-    , lover : Q.Queue Movement
-    , frame : Q.Queue Movement
-    }
-
-
-
-{-
-   Now moth is fluttering if fart test fails
-   And when a flutter movement is depleted it
-   is replaced with a new one
-   And when farting is enabled
-   it is replaced with the wind up and the fart after that
--}
-
-
-init : Int -> Int -> Float -> Model
-init width height currentTick_ =
-    { controls = initControls
-    , positions = initPositions width height
-    , movements = initMovements
-    , gas = 100.0
-    , θ = Angle.radians quarterPi
-    , direction = Vector2d.rTheta gasSpeed (Angle.radians (negate quarterPi))
-    , lastTick = Duration.seconds currentTick_
-    , currentTick = Duration.seconds currentTick_
-    , width = width
-    , height = height
-    , random = initRandomValues
+systemInit : Int -> Int -> Float -> System
+systemInit width height currentTick =
+    { controls =
+        { kb = Inactive
+        , mouse = Inactive
+        , gp = Inactive
+        , input = True
+        , padCount = 0
+        }
+    , lastTick = Duration.seconds currentTick
+    , currentTick = Duration.seconds currentTick
+    , width = Pixels.int width
+    , height = Pixels.int height
     , notifications = []
     }
 
 
-initControls : Controls
-initControls =
-    { kb = False, mouse = False, gp = False, input = True, padCount = 0 }
-
-
-initPositions : Int -> Int -> Positions
-initPositions width height =
-    let
-        screenWMid = toFloat width / 2
-        screenHMid = toFloat height / 2
-
-        initialFrame =
-            --Frame2d.atPoint (Point2d.centimeters (screenWMid - 32) (screenHMid - 32)) |> Frame2d.reverseY
-            Frame2d.atPoint (Point2d.centimeters 0 0) |> Frame2d.reverseY
-
-        initialMothPos =
-            --Point2d.xyIn initialFrame (Length.centimeters 0) (Length.centimeters 0)
-            Point2d.centimeters (screenWMid - 32) (screenHMid - 32 |> negate)
-        initialLoverPos =
-            Point2d.xyIn initialFrame (Length.centimeters 1000) (Length.centimeters 1000)
-
-        -- Point2d.centimeters 1000 1000 --Point2d.pixels 1000 1000
-    in
-    { moth = initialMothPos
-    , flowers = []
-    , grass = []
-    , lover = initialLoverPos
-    , frame = initialFrame
-    , farts = []
-    }
-
-
-initMovements : Movements
-initMovements =
-    { moth = []
-    , lover = []
-    , frame = []
-    }
-    
-initRandomValues : RandomValues
-initRandomValues =
-    { grass = (Duration.seconds 0, List.repeat 100 False) }
-
-
-
-{- Selectors -}
-
-
-{-| System
+{-| Time
 -}
-anyNotifications : Model -> Bool
-anyNotifications =
-    .notifications >> List.isEmpty >> not
+tickδ : System -> Duration
+tickδ { currentTick, lastTick } =
+    Quantity.difference currentTick lastTick
 
 
-notification : Model -> Maybe String
-notification =
-    .notifications >> List.head >> Maybe.map Tuple.second
+setLastTick : Duration -> Model -> Model
+setLastTick t =
+    mapSystem (\m -> { m | lastTick = t })
 
 
-lastTick : Model -> Duration
-lastTick =
-    .lastTick
+setCurrentTick : Duration -> Model -> Model
+setCurrentTick t =
+    mapSystem (\m -> { m | currentTick = t })
 
 
-currentTick : Model -> Duration
-currentTick =
-    .currentTick
-
-
-tickδ : Model -> Duration
-tickδ =
-    duple
-        >> Tuple.mapBoth currentTick lastTick
-        >> uncurry Quantity.difference
-
-currentTickか : Model -> Bool
-currentTickか =
-    currentTick >> Quantity.greaterThanZero
-
-
-
-mothMovingか : Model -> Bool
-mothMovingか model =
-    False
-
-
-mothFartingか : Model -> Bool
-mothFartingか model =
-    gas model > 0 && anyPressedか model
-
-fartActiveか : Model -> Bool
-fartActiveか model =
-    case model.positions.farts of
-        f :: fs ->
-            f.active
-        _ ->
-            False
-
-
-mothLandingか : Model -> Bool
-mothLandingか model =
-    False
-
-
-mothTakingOffか : Model -> Bool
-mothTakingOffか model =
-    False
-
-
-anyPendingMothMovementsか : Model -> Bool
-anyPendingMothMovementsか =
-    .movements
-    >> .moth
-    >> List.isEmpty
-    >> not
-
-framePos : Model -> Position
-framePos model =
-    let
-        ( spanW, spanH ) =
-            ( model.width // 2 |> toFloat, model.height // 2 |> toFloat )
-
-        lowerPoint =
-            mothPos model |> Point2d.translateBy (Vector2d.centimeters -spanW spanH)
-
-        upperPoint =
-            mothPos model |> Point2d.translateBy (Vector2d.centimeters spanW -spanH)
-    in
-    model.positions.frame |> Frame2d.originPoint
-
---mothState model |> Tuple.second |> (==) Feeding
-
-
-mothFeedingか : Model -> Bool
-mothFeedingか model =
-    False
-
-
-
--- mothState model |> (==) Feeding
-
-
-usingGasか : Model -> Bool
-usingGasか model =
-    anyPressedか model && gas model > 0
-
-
-gas : Model -> Float
-gas =
-    .gas
-
-
-
-mothPos : Model -> Position
-mothPos =
-    .positions >> .moth
-
-
-mothCoords : Model -> Coordinates
-mothCoords model =
-    mothPos model
-    --|> Point2d.coordinates
-    |> Point2d.coordinatesIn model.positions.frame
-
-
-
-
-mothθ : Model -> Angle
-mothθ =
-    .θ
-
-
-mothRot : Model -> Angle
-mothRot model =
-    if model.direction |> Vector2d.yComponent |> Quantity.lessThanZero then
-        Angle.radians halfPi
-    else 
-        Angle.radians 0
-               
-
-mothScale : Model -> Float
-mothScale =
-    always 1.0
-
-
-mothMirroredか : Model -> Bool
-mothMirroredか =
-    .direction 
-        >> Vector2d.xComponent
-        >> Quantity.lessThanZero
-
-
-mothMovements : Model -> Q.Queue Movement
-mothMovements =
-    .movements >> .moth
-
-
-farts : Model -> List (List { coords : Coordinates, scale : Float, rotation : Angle })
-farts model =
-    model.positions
-    |> .farts
-    |> List.map
-        (\{initial, θ, length, direction} ->
-            let
-                --(dir, len) = ((Direction2d.fromAngle θ |> Direction2d.relativeTo model.positions.frame), (Length.centimeters 1))
-                (dir, len) = ((Direction2d.fromAngle θ), (Length.centimeters 1)) |> Debug.log "fart direction"
-                initialFart = initial |> Point2d.relativeTo model.positions.frame --Point2d.coordinatesIn model.positions.frame
-            in
-            { coords = initialFart |> Point2d.coordinates, scale = 1, rotation = θ }
-            :: (List.range 1 length |> List.map (\i -> 
-                { coords = 
-                    initial
-                    --initialFart
-                    --|> Point2d.relativeTo model.positions.frame
-                    --|> Point2d.translateIn (dir |> Direction2d.relativeTo model.positions.frame) (Quantity.multiplyBy (toFloat i) len) 
-                    --|> Point2d.translateIn (θ |> Direction2d.rotateBy (Angle.degrees 90) |> Direction2d.toAngle) (Quantity.multiplyBy (toFloat i) len) 
-                    --|> Point2d.coordinates
-                    |> Point2d.translateBy (Vector2d.scaleBy (toFloat i / 100) direction)
-                    |> Point2d.coordinatesIn model.positions.frame
-                , scale = 1
-                , rotation = θ
-                }
-                ))
-            )
-    -- always [[ { pos = Point2d.centimeters 0 0, scale = 1 } ]]
-
-
-gameOverか : Model -> Bool
-gameOverか =
-    always False
-
-
-proximalToLoverか : Model -> Bool
-proximalToLoverか =
-    always True
-
-
-proximalToLizardか : Model -> Bool
-proximalToLizardか =
-    always True
-
-
-proximalToBirdか : Model -> Bool
-proximalToBirdか =
-    always True
-
-
-proximalToIcarusか : Model -> Bool
-proximalToIcarusか =
-    always True
-
-
-{-| NPCs
--}
-lizardPos : Model -> Position
-lizardPos =
-    always (Point2d.centimeters 0 0)
-
-
-lizardCoords : Model -> Coordinates
-lizardCoords =
-    duple
-        >> Tuple.mapSecond lizardPos
-        >> uncurry coordinatesIn
-
-
-lizardScale : Model -> Float
-lizardScale =
-    always 1.0
-
-
-birdPos : Model -> Position
-birdPos =
-    always (Point2d.centimeters 0 0)
-
-
-birdCoords : Model -> Coordinates
-birdCoords =
-    duple
-        >> Tuple.mapSecond birdPos
-        >> uncurry coordinatesIn
-
-
-birdScale : Model -> Float
-birdScale =
-    always 1.0
-
-
-loverPos : Model -> Position
-loverPos =
-    .positions
-        >> .lover
-
-
-loverCoords : Model -> Coordinates
-loverCoords =
-    duple
-        >> Tuple.mapSecond loverPos
-        >> uncurry coordinatesIn
-
-
-loverScale : Model -> Float
-loverScale =
-    always 1.0
-
-
-{-| Map
--}
-coordinatesIn : Model -> Position -> Coordinates
-coordinatesIn model =
-    Point2d.coordinatesIn model.positions.frame
-
-
-visibleGrassSegments : Model -> List { kind : Grass, coords : Coordinates, scale : Float, animated : Bool, mirrored : Bool}
-visibleGrassSegments model =
-    model
-        |> duple
-        |> Tuple.mapBoth (.positions >> .grass) (.random >> .grass >> Tuple.second)
-        |> uncurry (List.map3 (\idx ( f, k ) animate -> 
-            { kind = k
-            --, coords = (Length.centimeters (toFloat idx |> (*) 32), Length.centimeters groundLevel)
-            , coords = Point2d.xyIn model.positions.frame (toFloat idx |> (*) 32 |> Length.centimeters) (Length.centimeters groundLevel) |> Point2d.coordinates
-            , scale = 1 
-            , animated = animate
-            , mirrored = f
-            }) 
-            (List.range 0 (List.length model.positions.grass)))
-
-
-fireflies : Model -> List { pos : Position, scale : Float }
-fireflies =
-    always [ { pos = Point2d.centimeters 0 0, scale = 1 } ]
-
-
-trees : Model -> List { pos : Position, scale : Float }
-trees =
-    always [ { pos = Point2d.centimeters 0 0, scale = 1 } ]
-
-
-flowers : Model -> List { kind : Flower, coords : Coordinates, scale : Float }
-flowers model =
-    [] --[ { kind = Flower, coords = coordinatesIn model (Point2d.centimeters 0 0), scale = 1 } ]
-
-
-flowerYPos : Flower -> Float
-flowerYPos =
-    always 20
-
-seaPos : Position
-seaPos =
-    Point2d.centimeters 0 groundLevel 
-
-seaCoords : Model -> Coordinates
-seaCoords model =
-    Point2d.xyIn model.positions.frame (Length.centimeters -1000) (Length.centimeters (groundLevel - 20)) 
-    |> Point2d.coordinates
-
-grassAnimationsCompleteか : Model -> Bool
-grassAnimationsCompleteか = 
-    duple
-    >> Tuple.mapFirst (.random >> .grass >> Tuple.first)
-    >> Tuple.mapSecond (currentTick)
-    >> uncurry (Quantity.equalWithin (Duration.seconds 2))
-    >> not
-
-{-| Input
+{-| Controls
 -}
 anyPressedか : Model -> Bool
 anyPressedか model =
     if listeningか model then
-        controls model
-            |> anyPredicates [ .kb, .mouse, .gp ]
+        model.system.controls
+            |> anyPredicates (List.map ((<<) inPressedStateか) [ .kb, .mouse, .gp ])
 
     else
         False
 
 
-controls : Model -> Controls
-controls =
-    .controls
+inPressedStateか : ControlState -> Bool
+inPressedStateか cs =
+    case cs of
+        PressedAt _ ->
+            True
+
+        _ ->
+            False
 
 
 listeningか : Model -> Bool
 listeningか =
-    .controls >> .input
+    .system >> .controls >> .input
+
+
+justReleasedか : Model -> Bool
+justReleasedか model =
+    case controlsState model of
+        ReleasedAt x ->
+            Quantity.equalWithin Duration.millisecond x model.system.currentTick
+
+        _ ->
+            False
+
+
+justPressedか : Model -> Bool
+justPressedか model =
+    case controlsState model of
+        PressedAt x ->
+            Quantity.equalWithin Duration.millisecond x model.system.currentTick
+
+        _ ->
+            False
+
+
+pressedFor : Model -> Duration
+pressedFor model =
+    case controlsState model of
+        PressedAt x ->
+            Quantity.difference x model.system.currentTick
+
+        _ ->
+            Duration.seconds 0
+
+
+{-| This is a definite source of bugs and needs testing
+-}
+controlsState : Model -> ControlState
+controlsState =
+    .system
+        >> .controls
+        >> buildl (List.map ((<<) List.singleton) [ .kb, .mouse, .gp ])
+        >> List.foldl
+            (\state acc ->
+                case ( state, acc ) of
+                    ( ReleasedAt s, ReleasedAt a ) ->
+                        ReleasedAt (Quantity.max s a)
+
+                    ( PressedAt s, _ ) ->
+                        PressedAt s
+
+                    ( _, PressedAt a ) ->
+                        PressedAt a
+
+                    ( ReleasedAt s, _ ) ->
+                        ReleasedAt s
+
+                    ( _, ReleasedAt a ) ->
+                        ReleasedAt a
+
+                    ( _, _ ) ->
+                        state
+            )
+            Inactive
 
 
 padCount : Model -> Int
 padCount =
-    .controls
+    .system
+        >> .controls
         >> .padCount
 
 
-{-| Mutators
--}
-mapModel : (Model -> Model) -> Model -> Model
-mapModel fn m =
-    fn m
+mapControls : (Controls -> Controls) -> System -> System
+mapControls fn system =
+    { system | controls = fn system.controls }
 
 
-mapPositions : (Positions -> Positions) -> Model -> Model
-mapPositions fn =
-    mapModel (\m -> { m | positions = fn m.positions })
+setPadCount : Int -> Model -> Model
+setPadCount count =
+    mapSystem (mapControls (\c -> { c | padCount = count }))
 
 
-mapGas : (Float -> Float) -> Model -> Model
-mapGas fn =
-    mapModel (\m -> { m | gas = fn m.gas })
+pressControls : ControlState -> Duration -> ControlState
+pressControls state =
+    case state of
+        Inactive ->
+            PressedAt
 
+        ReleasedAt _ ->
+            PressedAt
 
-mapMovements : (Movements -> Movements) -> Model -> Model
-mapMovements fn =
-    mapModel (\m -> { m | movements = fn m.movements })
-
-
-{-| System
--}
-setLastTick : Duration -> Model -> Model
-setLastTick t =
-    mapModel (\m -> { m | lastTick = t })
-
-
-setCurrentTick : Duration -> Model -> Model
-setCurrentTick t =
-    mapModel (\m -> { m | currentTick = t })
-
-addNotification : String -> Model -> Model
-addNotification msg =
-    mapModel (\m -> { m | notifications = (Duration.seconds 4, msg) :: m.notifications })
-
-updateNotifications : Model -> Model
-updateNotifications model =
-    case model.notifications of
-        (nd, nmsg) :: ns ->
-            if Quantity.greaterThanZero nd then
-                mapModel (\m -> { m | notifications = (Quantity.minus (tickδ model) nd, nmsg) :: ns}) model
-            else
-                mapModel (\m -> {m | notifications = ns}) model
         _ ->
-            model
-
-{-| MOTH
--}
-mapMothPosition : (Position -> Position) -> Model -> Model
-mapMothPosition fn =
-    mapPositions (\p -> { p | moth = fn p.moth })
+            kestrel state
 
 
-mapFramePosition : (Frame -> Frame) -> Model -> Model
-mapFramePosition fn =
-    mapModel (\m ->
-        let newFrame = fn m.positions.frame 
-            oldFrame = m.positions.frame
-            newPositions p f = { p | frame = f }
-            newModel f = { m | positions = newPositions m.positions f }
-        in
-        if newFrame 
-            |> Frame2d.originPoint 
-            |> Point2d.coordinates
-            --|> Point2d.coordinatesIn oldFrame
-            |> Tuple.second 
-            --|> Debug.log "frame y coord"
-            |> Quantity.plus (Length.centimeters (toFloat m.height + 32)) -- |> Debug.log "ground level y coord")
-            |> Quantity.greaterThan (Length.centimeters groundLevel) then
-                if oldFrame
-                    |> Frame2d.originPoint 
-                    |> Point2d.coordinates
-                    --|> Point2d.coordinatesIn oldFrame
-                    |> Tuple.second 
-                    --|> Debug.log "frame y coord"
-                    |> Quantity.plus (Length.centimeters (toFloat m.height + 32)) -- |> Debug.log "ground level y coord")
-                    |> Quantity.greaterThan (Length.centimeters groundLevel) then
-                        newModel oldFrame -- figure out how to adjust
-                else
-                    m 
-        else
-            newModel newFrame 
-        )
+releaseControls : ControlState -> Duration -> ControlState
+releaseControls state =
+    case state of
+        PressedAt _ ->
+            ReleasedAt
 
-
-
-mapMothRotation : (Angle -> Angle) -> Model -> Model
-mapMothRotation fn =
-    mapModel (\m -> { m | θ = m |> mothθ |> fn })
-
-
-
-
-updateMothMovement : Float -> Model -> Model
-updateMothMovement tick model =
-    model
-
-setMothMovements : List { xComponent : Length, yComponent : Length, θ : Angle } -> Model -> Model
-setMothMovements values model =
-    if mothFartingか model then
-        model
-    else
-        mapMothMovements
-            (flip (List.foldl (flip Q.enqueue))
-                (List.indexedMap 
-                    (\idx -> 
-                        ( newMovement idx model 
-                        >> Tuple.mapBoth List.singleton List.singleton 
-                        >> uncurry (++)) 
-                    )
-                    values
-                |> List.concatMap identity
-                )
-            )
-            model
-
-newMovement : Int -> Model -> { xComponent : Length, yComponent : Length, θ : Angle } -> (Movement, Movement)
-newMovement offset model {xComponent, yComponent, θ} =
-    let
-        timeOffset = 3000 + (offset * 3000) |> toFloat
-        currentTick_ = currentTick model |> Quantity.plus (Duration.milliseconds (offset * 3000 |> toFloat))
-        newTime = Quantity.plus (Duration.milliseconds timeOffset) currentTick_
-        currentPos_ = mothPos model
-        vector = Vector2d.xy xComponent yComponent
-        newPt = Point2d.translateBy vector currentPos_
-        arc = Arc2d.from currentPos_ newPt θ
-        returnArc = Arc2d.from newPt currentPos_ (Angle.inRadians θ |> negate |> Angle.radians)
-        steps = Quantity.at fartVelocity (Duration.milliseconds 3000) |> Length.inCentimeters |> floor |> Debug.log "steps"
-        currentθ = mothθ model
-        newθ = Quantity.plus θ currentθ
-        newDir = 
-            case (Quantity.lessThanZero xComponent, Quantity.lessThanZero yComponent) of
-                (True, True) -> Direction2d.fromAngle (Angle.degrees 225)
-                (True, False) -> Direction2d.fromAngle (Angle.degrees 225)
-                (False, True) -> Direction2d.fromAngle (Angle.degrees 45)
-                (False, False) -> Direction2d.fromAngle (Angle.degrees -45)
-                {-
-                (True, True) -> Direction2d.fromAngle (Angle.degrees -45)
-                (True, False) -> Direction2d.fromAngle (Angle.degrees -135)
-                (False, True) -> Direction2d.fromAngle (Angle.degrees 45)
-                (False, False) -> Direction2d.fromAngle (Angle.degrees 135)
-                -}
-    in
-    (
-        { time = (currentTick_, newTime)
-        , coords = arc |> Arc2d.segments steps |> Polyline2d.vertices 
-        , angles = (currentθ, newθ)
-        , direction = newDir
-        }
-    ,   { time = (newTime, Quantity.plus (Duration.milliseconds 3000) newTime)
-        , coords = returnArc |> Arc2d.segments steps |> Polyline2d.vertices 
-        , angles = (newθ, currentθ)
-        , direction = Direction2d.reverse newDir
-        }
-    )
-
-updateGas : Float -> Model -> Model
-updateGas factor =
-    duple
-        >> Tuple.mapFirst
-            (tickδ
-                >> Duration.inSeconds
-                >> (*) factor
-                >> (*) gasDepletion
-            )
-        >> Tuple.mapFirst (\d -> (+) d >> clamp 0 100)
-        >> uncurry mapGas
-
-
-depleteGas : Model -> Model
-depleteGas =
-    updateGas -1
-
-
-replenishGas : Model -> Model
-replenishGas =
-    updateGas 1
-
-
-updateMothGas : Model -> Model
-updateMothGas model =
-    if usingGasか model then
-        depleteGas model
-
-    else if mothFeedingか model then
-        replenishGas model
-
-    else
-        model
-
-
-addFlutterMovements : Model -> Model
-addFlutterMovements =
-    identity
-
-
-
--- enqueue some flutter
-
-
-updateMothPositions : Model -> Model
-updateMothPositions model =
-    let
-        movimientos =
-            model |> mothMovements
-    in
-    if mothFartingか model then
-        let
-            mothPosRelative = mothPos model |> Point2d.relativeTo model.positions.frame
-            vector = model.direction |> Vector2d.scaleBy (tickδ model |> Duration.inSeconds)
-            vectorRelative = model.direction |> Vector2d.relativeTo model.positions.frame |> Vector2d.scaleBy (tickδ model |> Duration.inSeconds)
-            mappedMoth = mapMothPosition (vector {- |> Vector2d.reverse  |> Vector2d.mirrorAcross (Axis2d.y)-} |> Point2d.translateBy) model
-            --mappedMoth = mapMothPosition (always (Point2d.translateBy vectorRelative mothPosRelative |> Point2d.placeIn model.positions.frame)) model
-            --mappedFrame = mapFramePosition (Frame2d.translateBy vector) model
-            --mappedMoth = mapMothPosition (always (Frame2d.originPoint mappedFrame.positions.frame)) mappedFrame
-        in
-        mappedMoth
-        --model
-        --|> mapMothPosition (Point2d.translateBy vector)
-        |> mapFramePosition (vector |> Vector2d.mirrorAcross Axis2d.y |> Frame2d.translateBy )
-        --mapFramePosition (Frame2d.moveTo (mothPos mappedMoth)) mappedMoth
-        |> generateFarts
-
-    else if Q.enqueued movimientos then
-        case Q.dequeue movimientos of
-            Just { time, coords, angles, direction } ->
-                --start, origin, end, destination, firstAngle, rotation } ->
-                case coords of 
-                    destination :: eventualDestiny ->
-                        let
-                            --mθ = mothθ model
-                            --mothAngle = 
-                             --   if Quantity.greaterThan (Angle.radians pi) mθ then
-                              --      mθ
-                               -- else
-                                --    Quantity.minus (Angle.radians halfPi) mθ
-                            --( oriented, orienting ) =
-                            --    angles
-                            --( source, destination ) =
-                            --    coords
-                            --( start, end ) =
-                            --    time
-                            --percentComplete =
-                             --   (currentTick model |> Quantity.minus start |> Duration.inMilliseconds) / (end |> Quantity.minus start |> Duration.inMilliseconds)
-                            --vector =
-                             --   Vector2d.from source destination |> Vector2d.scaleBy (percentComplete * 0.02) |> Vector2d.rotateBy (Angle.radians (negate halfPi))
-                            newDirection = 
-                                Vector2d.withLength gasSpeed direction
-                        in
-                        model
-                        --mapFramePosition (Frame2d.translateBy vector) model
-                        --mapMothPosition (always (Point2d.interpolateFrom source destination percentComplete)) model
-                        --|> mapMothPosition (Point2d.translateBy (Vector2d.mirrorAcross Axis2d.x vector))
-                        |> mapMothMovements (Q.map (\m -> { m | coords = eventualDestiny }))
-                        |> mapMothPosition (always destination)
-                        |> setMothDirection newDirection
-                        |> deactivateFart
-                    [] ->
-                        model
-
-            Nothing ->
-                model
-                |> deactivateFart
-
-    else
-        model
-        |> deactivateFart
-
-setMothDirection : Vector -> Model -> Model
-setMothDirection vector =
-    mapModel (\m -> { m | direction = vector })
-
-updateMothRotation : Model -> Model
-updateMothRotation model =
-    if Q.enqueued model.movements.moth then
-        model
-        -- use that I guess
-
-    else
-        model
-
-newFart : Model -> Fart
-newFart model =
-    let
-        (xc, yc) = model.direction |> Vector2d.components
-        θ = model.direction 
-            |> Vector2d.relativeTo model.positions.frame 
-            |> Vector2d.direction 
-            |> Maybe.map Direction2d.toAngle 
-            |> Maybe.withDefault (Angle.degrees 45)
-        translatedPoint =
-            mothPos model
-            |> Point2d.relativeTo model.positions.frame
-            --|> Point2d.translateBy (Vector2d.centimeters -32 -10)
-            |> Point2d.placeIn model.positions.frame
-    in
-    { initial = Point2d.rotateAround (mothPos model) θ translatedPoint 
-    , θ = θ
-    , length = tickδ model |> Quantity.at fartVelocity |> Length.inCentimeters |> floor
-    , created = currentTick model
-    , active = True 
-    , direction = model.direction |> Vector2d.reverse
-    } 
-
-
-generateFarts : Model -> Model
-generateFarts model =
-    case model.positions.farts of
-        fart :: oldFarts ->
-            if fart.active then
-                let newLength =
-                        fart.created 
-                        |> flip Quantity.minus (currentTick model) 
-                        |> Quantity.at fartVelocity 
-                        |> Length.inCentimeters
-                in
-                mapPositions (\p -> { p | farts = {fart | length = floor newLength } :: oldFarts}) model
-            else 
-                mapPositions (\p -> { p | farts = newFart model :: fart :: oldFarts }) model
-        [] ->
-                mapPositions (\p -> { p | farts = newFart model |> List.singleton }) model
-
-
-
-
-
-
-mapMothMovements : (Q.Queue Movement -> Q.Queue Movement) -> Model -> Model
-mapMothMovements fn =
-    mapMovements (\m -> { m | moth = fn m.moth })
-
-
-cullCompletedMothMovements : Model -> Model
-cullCompletedMothMovements model =
-    if mothFartingか model then
-        mapMothMovements Q.clear model
-
-    else
-        case model |> mothMovements |> Q.dequeue of
-            Just { coords, angles } ->
-                if List.isEmpty coords then
-                    mapMothMovements Q.dequeued model
-                        |> mapMothRotation (always (Tuple.second angles))
-
-                else
-                    model
-
-            Nothing ->
-                model
-
-
-
-updateMothGeometry : Model -> Model
-updateMothGeometry model =
-    updateMothPositions model
-        |> updateMothRotation
-
-
-updateMothAction : Model -> Model
-updateMothAction =
-    identity
-
-
-addNewMovements : Model -> Model
-addNewMovements =
-    identity
-
-
-updateMothAnimation : Model -> Model
-updateMothAnimation =
-    cullFarts
-
-deactivateFart : Model -> Model
-deactivateFart model =
-    case model.positions.farts of
-        f1_ :: farts_ ->
-            if f1_.active then
-                mapPositions (\p ->
-                    { p 
-                    | farts = { f1_ | active = False } :: farts_
-                    }
-                ) model
-            else
-                model
         _ ->
-            model
-
-cullFarts : Model -> Model
-cullFarts model =
-    mapPositions (\p -> 
-        { p 
-        | farts = List.filter (.created >> Quantity.plus (Duration.seconds 5) >> Quantity.greaterThan (currentTick model)) p.farts
-        })
-    model
-
-updateMothStatus : Model -> Model
-updateMothStatus model =
-    updateMothGas model
-        |> cullCompletedMothMovements
-        |> updateMothGeometry
-        |> updateMothAction
-        |> addNewMovements
-        |> updateMothAnimation
-        |> updateNotifications
+            kestrel Inactive
 
 
+pressKeyboard : Model -> Model
+pressKeyboard =
+    mapSystem (\sys -> mapControls (\c -> { c | kb = pressControls c.kb sys.currentTick }) sys)
 
 
-updateGameState : Model -> Model
-updateGameState model =
-    if proximalToLoverか model then
-        startGoodEnding model
-
-    else if proximalToLizardか model then
-        startLizardEnding model
-
-    else if proximalToBirdか model then
-        startBirdEnding model
-
-    else if proximalToIcarusか model then
-        startIcarusEnding model
-
-    else
-        model
-
-
-
-
-
-startGoodEnding : Model -> Model
-startGoodEnding =
-    identity
-
-
-startLizardEnding : Model -> Model
-startLizardEnding =
-    identity
-
-
-startBirdEnding : Model -> Model
-startBirdEnding =
-    identity
-
-
-startIcarusEnding : Model -> Model
-startIcarusEnding =
-    identity
-
-
-{-| NPCs
--}
-birdPosΔ : Model -> Model
-birdPosΔ =
-    identity
-
-
-lizardPosΔ : Model -> Model
-lizardPosΔ =
-    identity
-
-
-loverPosΔ : Model -> Model
-loverPosΔ =
-    identity
-
-
-setLover : ( Float, Float ) -> Model -> Model
-setLover pos =
-    mapPositions (\p -> { p | lover = uncurry Point2d.centimeters pos })
-
-
-{-| Map
--}
-setGrass : List ( Bool, Grass ) -> Model -> Model
-setGrass grasses model =
-    mapPositions
-        (\p ->
-            { p
-                | grass =
-                    ( False, ShoreLineGrass )
-                    :: grasses
-            }
-        )
-        model
-
-setGrassAnimations : List Bool -> Model -> Model
-setGrassAnimations values model =
-    mapRandomValues (\rvs -> { rvs | grass = (model.currentTick, values)}) model
-
-mapRandomValues : (RandomValues -> RandomValues) -> Model -> Model
-mapRandomValues fn =
-    mapModel (\m -> { m | random = fn m.random })
-
-setFlowers : List ( Flower, Float ) -> Model -> Model
-setFlowers fleurs =
-    mapPositions (\p -> { p | flowers = List.map (\( f, x ) -> ( f, Point2d.centimeters x (flowerYPos f) )) fleurs })
-
-
-{-| Output
--}
-setWindow : Int -> Int -> Model -> Model
-setWindow newWidth newHeight =
-    mapModel (\m -> { m | width = newWidth, height = newHeight })
-        >> mapFramePosition (always (Frame2d.atPoint (Point2d.centimeters (newWidth |> toFloat) (newHeight |> toFloat))))
-        -- should CHECK
-
-
-{-| Input
--}
-mapControls : (Controls -> Controls) -> Model -> Model
-mapControls fn =
-    mapModel (\m -> { m | controls = fn m.controls })
+depressKeyboard : Model -> Model
+depressKeyboard =
+    mapSystem (\sys -> mapControls (\c -> { c | kb = releaseControls c.kb sys.currentTick }) sys)
 
 
 setKeyboard : Bool -> Model -> Model
-setKeyboard bool =
-    mapControls (\c -> { c | kb = bool })
+setKeyboard state =
+    if state then
+        pressKeyboard
+
+    else
+        depressKeyboard
+
+
+pressMouse : Model -> Model
+pressMouse =
+    mapSystem (\sys -> mapControls (\c -> { c | mouse = pressControls c.mouse sys.currentTick }) sys)
+
+
+depressMouse : Model -> Model
+depressMouse =
+    mapSystem (\sys -> mapControls (\c -> { c | mouse = releaseControls c.mouse sys.currentTick }) sys)
 
 
 setMouse : Bool -> Model -> Model
-setMouse bool =
-    mapControls (\c -> { c | mouse = bool })
+setMouse state =
+    if state then
+        pressMouse
+
+    else
+        depressMouse
+
+
+pressPad : Model -> Model
+pressPad =
+    mapSystem (\sys -> mapControls (\c -> { c | gp = pressControls c.gp sys.currentTick }) sys)
+
+
+depressPad : Model -> Model
+depressPad =
+    mapSystem (\sys -> mapControls (\c -> { c | gp = releaseControls c.gp sys.currentTick }) sys)
 
 
 setPad : Bool -> Model -> Model
-setPad bool =
-    mapControls (\c -> { c | gp = bool })
+setPad state =
+    if state then
+        pressPad
+
+    else
+        depressPad
 
 
 setListeningPad : Bool -> Model -> Model
-setListeningPad bool =
-    if bool then
+setListeningPad state =
+    if state then
         incrPadCount
+            >> addNotification "Game pad connected"
 
     else
         decrPadCount
-
-
-incrPadCount : Model -> Model
-incrPadCount =
-    mapControls (\c -> { c | padCount = c.padCount + 1 })
-
-
-decrPadCount : Model -> Model
-decrPadCount =
-    mapControls (\c -> { c | padCount = c.padCount - 1 })
+            >> addNotification "Game pad disconnected"
 
 
 setListeningControls : Bool -> Model -> Model
 setListeningControls bool =
-    mapControls (\c -> { c | input = bool })
+    mapSystem (mapControls (\c -> { c | input = bool }))
+
+
+incrPadCount : Model -> Model
+incrPadCount =
+    mapSystem (mapControls (\c -> { c | padCount = c.padCount + 1 }))
+
+
+decrPadCount : Model -> Model
+decrPadCount =
+    mapSystem (mapControls (\c -> { c | padCount = max 0 (c.padCount - 1) }))
+
+
+{-| Notifications
+-}
+addNotification : String -> Model -> Model
+addNotification notification =
+    mapSystem (\s -> { s | notifications = Q.enqueue ( Constants.notificationDuration, notification ) s.notifications })
+
+
+updateNotifications : Model -> Model
+updateNotifications model =
+    case model.system.notifications of
+        ( nd, nmsg ) :: ns ->
+            if Quantity.greaterThanZero nd then
+                mapSystem (\m -> { m | notifications = ( Quantity.minus (tickδ model.system) nd, nmsg ) :: ns }) model
+
+            else
+                mapSystem (\m -> { m | notifications = ns }) model
+
+        _ ->
+            model
+
+
+anyNotificationsか : Model -> Bool
+anyNotificationsか =
+    .system >> .notifications >> Q.enqueued
+
+
+{-| Camera
+-}
+centerCameraOn : Position -> Model -> Model
+centerCameraOn pos model =
+    let
+        halfScreenX =
+            model.system.width |> Quantity.toFloatQuantity |> Quantity.half
+
+        halfScreenY =
+            model.system.height |> Quantity.toFloatQuantity |> Quantity.half
+    in
+    { model
+        | frame =
+            Frame2d.moveTo (Point2d.at_ pixelsPerCentimeter pos) model.frame
+                |> Frame2d.translateIn Direction2d.negativeX halfScreenX
+                |> Frame2d.translateIn Direction2d.positiveY halfScreenY
+    }
+
+
+updateCamera : Model -> Model -> Model
+updateCamera oldModel newModel =
+    if not <| mothIdlingか newModel then
+        centerCameraOn newModel.moth.position newModel
+
+    else
+        newModel
+
+
+{-| Map
+-}
+groundLevelX =
+    0.0
+
+
+{-| Output
+-}
+setWindow : Quantity Int Pixels -> Quantity Int Pixels -> Model -> Model
+setWindow newWidth newHeight =
+    mapSystem (\m -> { m | width = newWidth, height = newHeight })
+
+
+{-| Game flow
+-}
+type Phase
+    = Playing
+    | GameOver
+
+
+gameOverか : Model -> Bool
+gameOverか =
+    .phase >> (==) GameOver
+
+
+reachedLoverか : Model -> Bool
+reachedLoverか =
+    phoenix
+        (Point2d.equalWithin (Length.centimeters 50))
+        (.moth >> .position)
+        (.lover >> .position)
+
+
+caughtBySpiderか : Model -> Bool
+caughtBySpiderか =
+    phoenix
+        (Point2d.equalWithin (Length.centimeters 10))
+        (.moth >> .position)
+        (.spider >> .position)
+
+
+caughtByBatか : Model -> Bool
+caughtByBatか =
+    phoenix
+        (Point2d.equalWithin (Length.centimeters 10))
+        (.moth >> .position)
+        (.bat >> .position)
+
+
+updateGamePhase : Model -> Model
+updateGamePhase model =
+    case model.phase of
+        Playing ->
+            if reachedLoverか model then
+                { model | phase = GameOver }
+
+            else if caughtBySpiderか model then
+                { model | phase = GameOver }
+
+            else if caughtByBatか model then
+                { model | phase = GameOver }
+
+            else
+                model
+
+        _ ->
+            model
+
+
+{-| Moth
+-}
+type alias Moth =
+    { position : Position
+    , direction : Direction
+    , state : State
+    , gas : Gas
+    , flutterings : Q.Queue QuadraticSpline --MothFluttering
+    , next : List ( Position, Direction, Duration )
+    }
+
+
+type State
+    = Idle
+    | Farting -- Duration
+    | Feeding
+    | Sitting
+    | Escaping Distance
+
+
+startEscaping =
+    Escaping (Length.centimeters 150)
+
+
+type alias MothFluttering =
+    { endPoint : Position
+    , controlPoint : Position
+    , arcBack : Bool
+    , arcDown : Bool
+    }
+
+
+mothStateTest : State -> Model -> Bool
+mothStateTest testState model =
+    case ( testState, model.moth.state ) of
+        ( Farting, Farting ) ->
+            True
+
+        ( Feeding, Feeding ) ->
+            True
+
+        ( Sitting, Sitting ) ->
+            True
+
+        ( Escaping _, Escaping _ ) ->
+            True
+
+        ( Idle, Idle ) ->
+            True
+
+        ( _, _ ) ->
+            False
+
+
+mothFartingか : Model -> Bool
+mothFartingか =
+    mothStateTest Farting
+
+
+mothFeedingか : Model -> Bool
+mothFeedingか =
+    mothStateTest Feeding
+
+
+mothEscapingか : Model -> Bool
+mothEscapingか =
+    mothStateTest startEscaping
+
+
+mothSittingか : Model -> Bool
+mothSittingか =
+    mothStateTest Sitting
+
+
+mothIdlingか : Model -> Bool
+mothIdlingか =
+    mothStateTest Idle
+
+
+mothHitBox : Moth -> HitBox
+mothHitBox { position } =
+    BoundingBox2d.withDimensions
+        ( Constants.mothWidth, Constants.mothHeight )
+        position
+
+
+mothPendingMovementsか : Model -> Bool
+mothPendingMovementsか =
+    .moth >> .flutterings >> Q.enqueued
+
+
+mothInit : Moth
+mothInit =
+    { position = Point2d.centimeters 0 300
+    , direction = Direction2d.positiveX
+    , state = Idle
+    , gas = Volume.milliliters 100.0
+    , flutterings = []
+    , next = []
+    }
+
+
+setIdleMovements : List QuadraticSpline -> Model -> Model
+setIdleMovements generated =
+    mapMoth (\m -> { m | flutterings = List.foldl Q.enqueue m.flutterings generated })
+
+
+updatePosition : Duration -> Moth -> Moth
+updatePosition elapsed moth =
+    case moth.state of
+        Feeding ->
+            moth
+
+        Sitting ->
+            moth
+
+        Escaping _ ->
+            let
+                newP =
+                    Point2d.translateIn
+                        Direction2d.positiveY
+                        (Quantity.for elapsed metersPerSecondOfFarting)
+                        moth.position
+            in
+            { moth
+                | position = safestMothPosition newP moth.position
+            }
+
+        Idle ->
+            case ( moth.next, Q.enqueued moth.flutterings ) of
+                ( ( p, d, t ) :: rest, _ ) ->
+                    let
+                        newT =
+                            Quantity.difference t elapsed
+
+                        percentT =
+                            Duration.inSeconds elapsed / 1
+
+                        newP =
+                            Point2d.interpolateFrom moth.position p percentT
+
+                        newD =
+                            Direction2d.angleFrom moth.direction d
+                                |> flip (Quantity.interpolateFrom (Direction2d.toAngle moth.direction)) percentT
+                                |> Direction2d.fromAngle
+                    in
+                    { moth
+                        | position = safestMothPosition newP moth.position
+                        , direction = newD
+                        , next =
+                            if Quantity.lessThanOrEqualToZero newT then
+                                rest
+
+                            else
+                                ( p, d, newT ) :: rest
+                    }
+
+                ( [], True ) ->
+                    let
+                        ndg =
+                            Q.dequeue moth.flutterings
+                                |> Maybe.map QuadraticSpline2d.nondegenerate
+                                |> Maybe.withDefault (Err Point2d.origin)
+
+                        next =
+                            ndg
+                                |> Result.map
+                                    (\n ->
+                                        n
+                                            |> QuadraticSpline2d.arcLengthParameterized { maxError = Length.centimeters 1 }
+                                            |> QuadraticSpline2d.arcLength
+                                            |> Quantity.at_ metersPerSecondIdling
+                                            |> Duration.inSeconds
+                                            |> ceiling
+                                            |> flip Parameter1d.trailing (QuadraticSpline2d.sample n)
+                                            |> List.map (\( point, dir ) -> ( Point2d.placeIn (Frame2d.atPoint moth.position) point, dir, Duration.seconds 0.5 ))
+                                    )
+                                |> Result.withDefault []
+                    in
+                    { moth
+                        | next = next
+                        , flutterings = Q.dequeued moth.flutterings
+                    }
+
+                _ ->
+                    moth
+
+        Farting ->
+            let
+                newP =
+                    Point2d.translateIn
+                        moth.direction
+                        (Quantity.for elapsed metersPerSecondOfFarting)
+                        moth.position
+            in
+            { moth
+                | position = safestMothPosition newP moth.position
+            }
+
+
+safestMothDirection : Direction -> Direction -> Direction
+safestMothDirection newDirection fallbackDirection =
+    let
+        angle =
+            Direction2d.toAngle newDirection
+    in
+    (if between (Angle.degrees 70) (Angle.degrees 110) angle then
+        nearest (Angle.degrees 70) (Angle.degrees 110) angle
+
+     else if between (Angle.degrees -110) (Angle.degrees -70) angle then
+        nearest (Angle.degrees -110) (Angle.degrees -70) angle
+
+     else
+        angle
+    )
+        |> Direction2d.fromAngle
+
+
+updateFlowerIndex : Model -> Model
+updateFlowerIndex model =
+    let
+        betweenList l =
+            case l of
+                first :: second :: _ ->
+                    between first second (Point2d.xCoordinate model.moth.position)
+
+                _ ->
+                    False
+    in
+    if anyPredicates [ mothFeedingか, mothSittingか ] model then
+        model
+
+    else
+        mapFood
+            (\f ->
+                { f
+                    | nextFlowerIndex =
+                        (( Normal, Point2d.origin ) :: model.food.flowers)
+                            |> List.map (Tuple.second >> Point2d.xCoordinate)
+                            |> List.Extra.groupsOfWithStep 2 1
+                            |> List.Extra.findIndex betweenList
+                }
+            )
+            model
+
+
+landOnNearbyFlower : Model -> Model
+landOnNearbyFlower model =
+    let
+        flowerTestState ( index, ( flowerKind, position ) ) =
+            { index = index
+            , kind = flowerKind
+            , hitBox = flowerHitBox ( flowerKind, position )
+            }
+
+        mothIntersection =
+            BoundingBox2d.intersection (mothHitBox model.moth)
+
+        intersectionArea =
+            BoundingBox2d.dimensions >> uncurry Quantity.product
+    in
+    if anyPredicates [ mothEscapingか, mothFeedingか, mothSittingか ] model then
+        model
+
+    else
+        model.food.nextFlowerIndex
+            |> Maybe.andThen
+                ((+) -1
+                    >> flip List.drop (List.indexedMap Tuple.pair model.food.flowers)
+                    >> List.take 2
+                    >> List.map (flowerTestState >> duple)
+                    >> List.filterMap (Tuple.mapBoth Just (.hitBox >> mothIntersection >> Maybe.map intersectionArea) >> liftTuple)
+                    >> List.Extra.maximumWith
+                        (curry
+                            (mapEach Tuple.second
+                                >> uncurry Quantity.compare
+                            )
+                        )
+                )
+            |> Maybe.map
+                (\( { kind, hitBox }, iA ) ->
+                    if Quantity.greaterThan (Area.squareCentimeters 8) iA then
+                        mapMoth
+                            (\moth ->
+                                { moth
+                                    | state = Feeding
+                                    , position = Point2d.xy (BoundingBox2d.midX hitBox) (flowerLandingYComponent kind)
+                                }
+                            )
+                            model
+
+                    else
+                        model
+                )
+            |> Maybe.withDefault model
+
+
+safestMothPosition : Position -> Position -> Position
+safestMothPosition newPosition fallBackPosition =
+    if mothSubmergingか newPosition then
+        Point2d.xy (Point2d.xCoordinate newPosition) (Point2d.yCoordinate fallBackPosition)
+
+    else
+        newPosition
+
+
+mothSubmergingか : Position -> Bool
+mothSubmergingか =
+    phoenix
+        (||)
+        (phoenix
+            BoundingBox2d.contains
+            (Point2d.signedDistanceAlong Axis2d.x >> cardinal Point2d.xy Constants.groundLevel)
+            (BoundingBox2d.withDimensions ( mothWidth, mothHeight ))
+        )
+        (Point2d.signedDistanceAlong Axis2d.y >> Quantity.lessThanZero)
+
+
+updateState : { isPressed : Bool, controlStateJustChanged : Bool, elapsedTime : Duration } -> Moth -> Moth
+updateState { isPressed, controlStateJustChanged, elapsedTime } oldMoth =
+    --elapsed controlState oldMoth =
+    let
+        newlyPressed =
+            isPressed && controlStateJustChanged
+
+        mapStateIfGassy fallback fn m =
+            m |> defaultTo (mapState (kestrel fallback)) (not <| emptyか m.gas) (mapState fn)
+
+        sitIfFull m =
+            m |> defaultTo (kestrel m) (fullか m.gas) (mapGas (kestrel (Volume.milliliters 100.0)) >> mapState (kestrel Sitting))
+
+        emptyか =
+            Quantity.lessThanOrEqualToZero
+
+        fullか =
+            Quantity.greaterThanOrEqualTo (Volume.milliliters 100.0)
+
+        reduceGas =
+            Quantity.minus (Quantity.at Constants.gasPerSecondOfFarting elapsedTime)
+
+        replenishGas =
+            Quantity.plus (Quantity.at Constants.gasPerSecondOfFeeding elapsedTime)
+
+        mapGas fn m =
+            { m | gas = fn m.gas }
+
+        mapState fn m =
+            { m | state = fn m.state }
+
+        reduceGasIfFarting m =
+            m |> defaultTo (kestrel m) (m.state == Farting) (mapGas reduceGas)
+
+        replenishGasIfFeeding m =
+            m |> defaultTo (kestrel m) (m.state == Feeding) (mapGas replenishGas)
+
+        clearNextIfFarting m =
+            { m | next = defaultTo m.next (m.state == Farting) [] }
+
+        idolize m =
+            { m | state = Idle }
+
+        transitionFromIdleToFarting =
+            defaultTo identity isPressed (mapStateIfGassy Idle (always Farting))
+    in
+    case oldMoth.state of
+        Idle ->
+            updatePosition elapsedTime oldMoth
+                |> transitionFromIdleToFarting
+
+        Feeding ->
+            if newlyPressed then
+                mapStateIfGassy Feeding (always startEscaping) oldMoth
+
+            else
+                replenishGasIfFeeding oldMoth
+                    |> sitIfFull
+
+        Sitting ->
+            if newlyPressed then
+                mapStateIfGassy Feeding (always startEscaping) oldMoth
+
+            else
+                oldMoth
+
+        Escaping remaining ->
+            if Quantity.lessThanOrEqualToZero remaining then
+                idolize oldMoth
+
+            else
+                { oldMoth
+                    | state =
+                        Escaping
+                            (remaining
+                                |> Quantity.minus (Quantity.at C.metersPerSecondOfFarting elapsedTime)
+                            )
+                }
+                    |> updatePosition elapsedTime
+
+        Farting ->
+            let
+                moth =
+                    updatePosition elapsedTime oldMoth
+            in
+            if isPressed then
+                reduceGasIfFarting moth
+                    |> mapStateIfGassy Idle (always Farting)
+                    |> clearNextIfFarting
+
+            else
+                idolize moth
+
+
+{-| Food
+-}
+type alias Food =
+    { flowers : List ( Flower, Position )
+    , nextFlowerIndex : Maybe Int
+
+    {- Use this index to store calculated data for:
+       1. Making flower in direction of moth glow
+       2. Checking quickly the intersection of both flowers with the moth
+    -}
+    }
+
+
+type Flower
+    = Normal
+
+
+initFood : Food
+initFood =
+    { flowers = [ ( Normal, Point2d.centimeters 500 0 ) ]
+    , nextFlowerIndex = Just 0
+    }
+
+
+flowerHitBox : ( Flower, Position ) -> Constants.HitBox
+flowerHitBox ( flower, position ) =
+    case flower of
+        Normal ->
+            BoundingBox2d.withDimensions
+                ( Length.centimeters 50, Quantity.plus (Length.centimeters 50) (flowerHeight flower) )
+                (position |> Point2d.translateIn Direction2d.positiveY (flowerHeight flower))
+
+
+flowerHeight : Flower -> Quantity Float Length.Meters
+flowerHeight flower =
+    case flower of
+        Normal ->
+            Length.centimeters 285
+
+
+flowerLandingYComponent : Flower -> Distance
+flowerLandingYComponent flower =
+    case flower of
+        Normal ->
+            Length.centimeters 231
+
+
+{-| Antagonists
+-}
+type alias Antagonist =
+    { position : Position
+    , direction : Direction
+    , pursuing : Maybe WalkingPath
+    , pursuit : Pursuit
+    }
+
+
+type Pursuit
+    = Patrol
+    | Alignment Position
+    | Pursuit Position
+    | Deescalation Position
+
+
+initBat : Antagonist
+initBat =
+    { position = Point2d.along C.batFlightAxis (Length.meters -9)
+    , direction = Direction2d.positiveX
+    , pursuing = Nothing
+    , pursuit = Patrol
+    }
+
+
+batHitBox : Antagonist -> HitBox
+batHitBox =
+    .position >> BoundingBox2d.withDimensions ( C.batWidth, C.batHeight )
+
+
+batPatrollingか : Antagonist -> Bool
+batPatrollingか =
+    .pursuing >> Maybe.Extra.isNothing
+
+
+batSwoopingか : Antagonist -> Bool
+batSwoopingか =
+    .pursuing >> Maybe.Extra.isJust
+
+
+{-| bat stuff
+when patrolling, if moth enters idle mode above flower height, moth is elligible for attack
+if bat is facing moth and at least 45degrees away, then bat will attack
+bat swoops when at 45degrees, so if not yet at 45, it enters alignment mode with position = 45degree mark
+at 45degree mark, bat angles down towards moth's active position in pursuit mode with position = moth.position
+if moth and bat have x amount of hitbox overlap at pursuit position, then it's game over
+else, bat enters deescalation with position equals spot on flight axis 45 degrees away
+-}
+updateBat : Model -> Model
+updateBat model =
+    let
+        check =
+            Ok
+
+        chain =
+            Result.andThen
+
+        test : (Moth -> Antagonist -> Model -> Result Model Model) -> Result Model Model -> Result Model Model
+        test fn =
+            chain (\m -> fn m.moth m.bat m)
+
+        succeed =
+            Ok
+
+        fail =
+            Err
+
+        checkVulnerability =
+            test
+                (\_ _ m ->
+                    if mothIdlingか m then
+                        succeed m
+
+                    else
+                        fail m
+                )
+
+        enterPursuitIfConditionsMet =
+            let
+                checkEcholocationRange =
+                    test
+                        (\moth bat m ->
+                            if
+                                Point2d.distanceFrom moth.position bat.position
+                                    |> Quantity.lessThanOrEqualTo C.echolocationRange
+                            then
+                                succeed m
+
+                            else
+                                fail m
+                        )
+
+                checkMothInBatDirection =
+                    test
+                        (\moth bat m ->
+                            if
+                                Point2d.signedDistanceAlong (Axis2d.through bat.position bat.direction) moth.position
+                                    |> Quantity.greaterThanZero
+                            then
+                                succeed m
+
+                            else
+                                fail m
+                        )
+
+                checkMothAtCorrectAngle =
+                    test
+                        (\moth bat m ->
+                            let
+                                threshold =
+                                    Quantity.equalWithin (Angle.degrees 5)
+                            in
+                            Direction2d.from bat.position moth.position
+                                |> Maybe.map
+                                    (\d ->
+                                        if
+                                            Direction2d.angleFrom bat.direction d
+                                                |> duple
+                                                |> Tuple.mapBoth (threshold (Angle.degrees 45)) (threshold (Angle.degrees 135))
+                                                |> uncurry (||)
+                                        then
+                                            mapBat (\b -> { b | pursuit = Pursuit moth.position }) m
+                                                |> succeed
+
+                                        else
+                                            fail m
+                                    )
+                                |> Maybe.withDefault (fail m)
+                        )
+            in
+            duple
+                >> Tuple.mapSecond
+                    (check
+                        >> checkVulnerability
+                        >> checkMothInBatDirection
+                        >> checkEcholocationRange
+                        >> checkMothAtCorrectAngle
+                    )
+                >> uncurry Result.withDefault
+
+        cancelPursuitIfConditionsMet =
+            duple
+                >> Tuple.mapBoth
+                    (mapBat (\b -> { b | pursuit = Deescalation (Point2d.translateIn Direction2d.positiveY (Point2d.signedDistanceFrom C.batFlightAxis b.position) b.position) }))
+                    (check
+                        >> checkVulnerability
+                    )
+                >> uncurry Result.withDefault
+
+        δ =
+            tickδ model.system
+
+        turnAroundAtEdges m =
+            let
+                ( minPt, maxPt ) =
+                    ( C.minimalBatRange, C.maximalBatRange ) |> mapEach (Point2d.along C.batFlightAxis)
+
+                batPos =
+                    m.bat.position
+            in
+            case ( Point2d.lexicographicComparison batPos minPt, Point2d.lexicographicComparison batPos maxPt ) of
+                ( LT, _ ) ->
+                    mapBat (\b -> { b | direction = Direction2d.reverse b.direction }) m
+
+                ( _, GT ) ->
+                    mapBat (\b -> { b | direction = Direction2d.reverse b.direction }) m
+
+                _ ->
+                    m
+    in
+    case model.bat.pursuit of
+        Patrol ->
+            mapBat
+                (\b ->
+                    { b
+                        | position = Point2d.translateIn b.direction (Quantity.at C.batFlightSpeed δ) b.position
+                    }
+                )
+                model
+                |> turnAroundAtEdges
+                |> enterPursuitIfConditionsMet
+
+        Alignment destination ->
+            if Point2d.equalWithin (Length.centimeters 1) model.bat.position destination then
+                model
+                -- enter pusuit
+
+            else
+                model
+
+        -- continue alignment
+        Pursuit destination ->
+            model
+                |> mapBat
+                    (\b ->
+                        Direction2d.from b.position model.moth.position
+                            |> Maybe.map
+                                (\d ->
+                                    { b
+                                        | position = Point2d.translateIn d (Quantity.at C.batSwoopSpeed δ) b.position
+                                        , direction = d
+                                        , pursuit = Pursuit model.moth.position
+                                    }
+                                )
+                            |> Maybe.withDefault b
+                    )
+                |> cancelPursuitIfConditionsMet
+
+        Deescalation destination ->
+            if Point2d.equalWithin (Length.centimeters 1) model.bat.position destination then
+                model
+                -- return to patrol mode
+
+            else
+                model
+
+
+
+-- continue moving
+
+
+initSpider : Antagonist
+initSpider =
+    { position = Point2d.centimeters -900 0
+    , direction = Direction2d.positiveX
+    , pursuing = Nothing
+    , pursuit = Patrol
+    }
+
+
+spiderHitBox : Antagonist -> HitBox
+spiderHitBox =
+    .position >> BoundingBox2d.withDimensions ( C.spiderWidth, C.spiderHeight )
+
+
+spiderOnGroundか : Antagonist -> Bool
+spiderOnGroundか =
+    duple
+        >> Tuple.mapBoth
+            (.position >> Point2d.xCoordinate >> flip Point2d.xy (Length.centimeters 0.1))
+            spiderHitBox
+        >> uncurry BoundingBox2d.contains
+
+
+spiderPathToMoth : Moth -> Antagonist -> PursuitPath
+spiderPathToMoth moth spider =
+    let
+        ( spiderXCoord, spiderYCoord ) =
+            Point2d.coordinates spider.position
+
+        ( mothXCoord, mothYCoord ) =
+            Point2d.coordinates moth.position
+
+        threshold =
+            Length.centimeters 0.1
+
+        yZero =
+            Length.centimeters 0
+    in
+    [ spider.position ]
+        |> appendIf (not <| spiderOnGroundか spider) (Point2d.xy spiderXCoord yZero)
+        |> appendIf (between yZero C.spiderHeight mothYCoord) (Point2d.xy mothXCoord yZero)
+        |> flip (++) [ moth.position ]
+        |> Polyline2d.fromVertices
+
+
+updateSpider : Model -> Model
+updateSpider model =
+    let
+        tδ =
+            tickδ model.system
+
+        updatePursuit path s =
+            { s | pursuing = Just (path s) }
+
+        updateSpiderPosition s =
+            let
+                ( position, direction ) =
+                    case s.pursuing of
+                        Just path ->
+                            Polyline2d.segments path
+                                |> List.head
+                                |> Maybe.andThen LineSegment2d.direction
+                                |> Maybe.map
+                                    (duple
+                                        >> Tuple.mapFirst
+                                            (finchStar Point2d.translateIn s.position (Quantity.at C.spiderPursuitSpeed tδ))
+                                    )
+                                |> Maybe.withDefault ( s.position, s.direction )
+
+                        Nothing ->
+                            if Point2d.signedDistanceFrom Axis2d.x s.position |> Quantity.greaterThanZero then
+                                ( s.position |> Point2d.translateIn Direction2d.negativeY (Quantity.at C.spiderWalkSpeed tδ)
+                                , Direction2d.negativeY
+                                )
+
+                            else
+                                ( s.position, s.direction )
+            in
+            { s | position = position, direction = direction }
+
+        {-
+           meanderSpider fn =
+               mapSpider (\s ->
+                   let (pos, dir) = fn s.position s.dir
+                   in
+                   { s | position = pos, direction = dir }
+               )
+        -}
+        chaseMoth m =
+            m
+                |> mapSpider (updatePursuit (spiderPathToMoth m.moth))
+                |> phoenix mapSpider (kestrel << updateSpiderPosition << .spider) identity
+    in
+    case model.moth.state of
+        Sitting ->
+            chaseMoth model
+
+        Feeding ->
+            chaseMoth model
+
+        _ ->
+            if model.moth.position |> Point2d.signedDistanceFrom Axis2d.x |> Quantity.greaterThan C.spiderHeight then
+                model
+                {- if Point2d.lexicographicComparison model.moth.position model.spider.position == GT then
+                   meanderSpider (Tuple.pair >> Tuple.mapBoth
+                -}
+
+            else
+                chaseMoth model

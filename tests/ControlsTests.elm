@@ -1,9 +1,11 @@
 module ControlsTests exposing (suite)
 
 import Expect
-import Test exposing (Test, test, describe, fuzz3)
+import Test exposing (Test, test, describe, fuzz3, fuzz)
 import Fuzz 
 import Model
+import Quantity
+import Duration
 
 runXTimes : (a -> a) -> Int -> (a -> a)
 runXTimes fn count =
@@ -22,13 +24,13 @@ controls =
     \_ -> 
       init
       |> Model.setListeningPad True
-      |> Model.anyNotifications
+      |> Model.anyNotificationsか
       |> Expect.equal True
   , test "Game pad disconnected triggers notifications" <|
     \_ ->
       init
       |> Model.setListeningPad False
-      |> Model.anyNotifications
+      |> Model.anyNotificationsか
       |> Expect.equal True
   , test "Second game pad disconnecting doesn't disable listening on pads" <|
     \_ ->
@@ -56,6 +58,34 @@ controls =
       |> Model.setListeningControls False
       |> Model.anyPressedか
       |> Expect.equal False
+  
+  , fuzz (Fuzz.map Duration.milliseconds (Fuzz.floatRange 100 200)) "Held time accumulates" <|
+    \dur ->
+      let
+        pressed = 
+          init
+          |> Model.setKeyboard True
+        held =
+          pressed
+          |> Model.setCurrentTick dur
+          |> Model.update
+          |> Model.setLastTick dur
+        released =
+          held
+          |> Model.setKeyboard False
+        inactive =
+          released
+          |> Model.setCurrentTick dur
+          |> Model.update
+
+      in
+      Expect.all
+        [ Model.justPressedか pressed |> Expect.equal True |> Expect.onFail "Not pressed" |> always
+        , Model.justPressedか held |> Expect.equal False |> Expect.onFail "Pressed instead of held" |> always
+        , Model.anyPressedか inactive |> Expect.equal False |> Expect.onFail "Not inactive" |> always
+        , Model.justReleasedか released |> Expect.equal True |> Expect.onFail "Not released" |> always
+        ]
+        dur
   ]
   |> describe "Controls tests"
 
